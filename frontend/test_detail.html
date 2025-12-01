@@ -1,0 +1,28 @@
+<h2>Test Details</h2>
+
+<div class="card p-3 mb-3">
+    <h3>{{ test.test_name }}</h3>
+
+    <p><strong>Total Marks:</strong> {{ test.total_marks }}</p>
+    <p><strong>Duration:</strong> {{ test.duration_minutes }} minutes</p>
+    <p><strong>Created At:</strong> {{ test.created_at }}</p>
+</div>
+
+<h4>Questions</h4>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Question</th>
+            <th>Marks</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for q in questions %}
+        <tr>
+            <td>{{ q.question_text }}</td>
+            <td>{{ q.question_marks }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

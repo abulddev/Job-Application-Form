@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Assignment</title>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
+</head>
+
+<body class="d-flex flex-column">
+  <a href="/dashboard"
+     class="btn btn-dark"
+     style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
+    🏠 Home
+  </a>
+  
+<div class="container py-5">
+  <h2 class="text-center mb-4">Create Assignment</h2>
+
+  {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+  {% if success %}
+    <div class="alert alert-success">{{ success }}</div>
+  {% endif %}
+
+  <form action="/create-assignment" method="post" enctype="multipart/form-data" class="card card-md p-4">
+
+    <div class="mb-3">
+      <label class="form-label">Assignment Name</label>
+      <input type="text" name="assignment_name" class="form-control" required>
+    </div>
+
+    <!-- DYNAMIC TEXT + ATTACHMENT BLOCKS -->
+    <div id="scenarioContainer">
+      <div class="scenario-block mb-4 p-3 border rounded">
+
+        <label class="form-label">Scenario Text</label>
+        <textarea name="scenario_text" class="form-control" rows="3" required></textarea>
+
+        <label class="form-label mt-2">Attachment (optional)</label>
+        <input type="file" name="attachments" class="form-control"
+          accept=".jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx,.ppt,.pptx,.pdf">
+
+      </div>
+    </div>
+
+    <button type="button" class="btn btn-secondary mb-3" onclick="addScenarioBlock()">+ Add More</button>
+
+
+    <div class="mb-3">
+      <label class="form-label">Skill Tag</label>
+      <select name="skill_tag" class="form-control" required>
+        {% for s in skills %}
+          <option value="{{ s }}">{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Experience Tag</label>
+      <select name="experience_tag" class="form-control" required>
+        {% for e in experiences %}
+          <option value="{{ e }}">{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Due Date</label>
+      <input type="date" name="due_date" class="form-control" required min="{{ current_date }}">
+    </div>
+
+    <button class="btn btn-primary w-100" type="submit">Create Assignment</button>
+
+  </form>
+</div>
+
+<script>
+function addScenarioBlock() {
+    const container = document.getElementById("scenarioContainer");
+
+    const block = document.createElement("div");
+    block.classList.add("scenario-block", "mb-4", "p-3", "border", "rounded");
+
+    block.innerHTML = `
+        <label class="form-label">Scenario Text</label>
+        <textarea name="scenario_text" class="form-control" rows="3" required></textarea>
+
+        <label class="form-label mt-2">Attachment (optional)</label>
+        <input type="file" name="attachments" class="form-control"
+          accept=".jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx,.ppt,.pptx,.pdf">
+
+        <button type="button" class="btn btn-danger btn-sm mt-2" onclick="this.parentElement.remove()">Remove</button>
+    `;
+
+    container.appendChild(block);
+}
+</script>
+
+</body>
+</html>

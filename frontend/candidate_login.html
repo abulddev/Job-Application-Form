@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Candidate Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
+</head>
+
+<body class="d-flex flex-column">
+
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+      <div class="text-center mb-4">
+        <h1>Candidate Login</h1>
+      </div>
+
+      {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+
+      <!-- FINAL CLEAN VERSION: NO GET PARAMS IN ACTION -->
+      <form id="loginForm" action="/candidate-login" method="post" class="card card-md">
+        <div class="card-body">
+
+          <!-- Hidden Assignment ID -->
+          <input type="hidden" name="assignment_id" value="{{ assignment_id }}">
+
+          <!-- Hidden Test ID -->
+          <input type="hidden" name="test_id" value="{{ test_id }}">
+
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input id="email" 
+                   type="email" 
+                   name="email" 
+                   class="form-control"
+                   value="{{ email }}" 
+                   required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Temporary Password</label>
+            <input id="temp_password" 
+                   type="password" 
+                   name="temp_password"
+                   class="form-control"
+                   value="{{ temp_password }}" 
+                   required>
+          </div>
+
+          <div class="mb-3">
+            <button type="submit" class="btn btn-primary w-100">Login</button>
+          </div>
+
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+<script>
+  window.onload = function () {
+    const email = document.getElementById("email").value;
+    if (!email) {
+      document.getElementById("email").focus();
+    } else {
+      document.getElementById("temp_password").focus();
+    }
+  };
+</script>
+
+</body>
+</html>

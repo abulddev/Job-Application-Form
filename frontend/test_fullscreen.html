@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ test.test_name }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        #timerBox {
+            display:none;
+            position: fixed;
+            top: 10px;
+            right: 20px;
+            background: #dc3545;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 20px;
+            z-index: 9999;
+        }
+        .question-box {
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            margin-bottom: 15px;
+        }
+        #startFullscreenBtn {
+            margin-top: 40px;
+        }
+        #endTestBtn {
+            display:none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 99999;
+        }
+
+        /* CAMERA BOX */
+        #cameraBox {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 220px;
+            height: 160px;
+            background: black;
+            border: 2px solid white;
+            z-index: 999999;
+            display:none;
+        }
+        #cameraFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container mt-4 text-center">
+    <h3>Click the button below to enter Fullscreen and start test</h3>
+    <button id="startFullscreenBtn" class="btn btn-primary btn-lg">Start Test</button>
+</div>
+
+<button id="endTestBtn" class="btn btn-danger">End Test</button>
+
+<!-- CAMERA BOX -->
+<div id="cameraBox">
+    <video id="cameraFeed" autoplay playsinline></video>
+</div>
+
+<div id="timerBox"></div>
+
+<div id="testContainer" class="container mt-4" style="display:none;">
+
+    <form id="testForm">
+
+        <!-- REQUIRED HIDDEN FIELDS -->
+        <input type="hidden" name="test_id" value="{{ test.id }}">
+        <input type="hidden" name="submission_id" id="submission_id_input">
+
+        <!-- FIXED: Candidate info added -->
+        <input type="hidden" name="candidate_email" value="{{ candidate_email }}">
+        <input type="hidden" name="candidate_name" value="{{ candidate_name }}">
+
+        {% for q in questions %}
+        <div class="question-box">
+            <p><b>Q{{ loop.index }}:</b> {{ q.question_text }}</p>
+
+            {% if q.question_type == "mcq" %}
+                {% for opt in q.mcq_options %}
+                    {% set opt_letter = opt.split(':')[0].strip() %}
+                    <label>
+                        <input type="radio"
+                               class="answer-control"
+                               name="answer_{{ q.id }}"
+                               value="{{ opt_letter }}">
+                        {{ opt }}
+                    </label><br>
+                {% endfor %}
+            {% else %}
+                <textarea class="form-control answer-control"
+                          name="answer_{{ q.id }}"
+                          rows="3"
+                          placeholder="Write your answer..."></textarea>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+    </form>
+
+    <button class="btn btn-success w-100" id="submitBtn" onclick="submitTest()">Submit Test</button>
+</div>
+
+
+<!-- CONFIRM END MODAL -->
+<div class="modal fade" id="endConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content p-3">
+
+            <div class="modal-header">
+                <h5 class="modal-title">End Test?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                Are you sure you want to end the test? This cannot be undone.
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-danger" id="confirmEndTestBtn">End Test</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+
+let cameraStream = null;
+let cameraCheckInterval = null;
+
+// ------------------------------------
+(function() {
+    const p = new URLSearchParams(window.location.search);
+    const sid = p.get("sid");
+    if (sid) document.getElementById("submission_id_input").value = sid;
+})();
+
+
+// ------------------------------------
+// CAMERA START FUNCTION + MONITORING
+// ------------------------------------
+async function startCamera() {
+    try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+        const video = document.getElementById("cameraFeed");
+        video.srcObject = cameraStream;
+
+        document.getElementById("cameraBox").style.display = "block";
+
+        // camera monitoring
+        cameraCheckInterval = setInterval(() => {
+            if (!cameraStream.active) {
+                terminateTest("Camera stopped. Test ended.");
+            }
+        }, 2000);
+
+    } catch (err) {
+        alert("Camera access denied! You cannot continue the test.");
+        terminateTest("Camera access required.");
+    }
+}
+
+
+// ------------------------------------
+document.getElementById("startFullscreenBtn").addEventListener("click", async () => {
+    try {
+
+        await startCamera();
+        await document.documentElement.requestFullscreen();
+
+        setTimeout(() => {
+            document.getElementById("testContainer").style.display = "block";
+            document.getElementById("timerBox").style.display = "block";
+            document.getElementById("startFullscreenBtn").style.display = "none";
+            document.getElementById("endTestBtn").style.display = "block";
+
+            startTimer();
+            enableFullscreenWatcher();
+        }, 300);
+
+    } catch (err) {
+        alert("Fullscreen or camera permission blocked.");
+    }
+});
+
+
+// ------------------------------------
+function enableFullscreenWatcher() {
+    document.addEventListener("fullscreenchange", () => {
+        if (!document.fullscreenElement) {
+            terminateTest("You exited fullscreen. Test ended.");
+        }
+    });
+}
+
+
+// ------------------------------------
+function terminateTest(msg) {
+    const submissionId = document.getElementById("submission_id_input").value;
+
+    if (cameraCheckInterval) clearInterval(cameraCheckInterval);
+
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+    }
+
+    fetch("/test/violation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submission_id: submissionId })
+    });
+
+    alert(msg);
+    window.location.href = "/test-ended";
+}
+
+
+// ------------------------------------
+document.getElementById("endTestBtn").onclick = function () {
+    let modal = new bootstrap.Modal(document.getElementById("endConfirmModal"));
+    modal.show();
+};
+
+document.getElementById("confirmEndTestBtn").onclick = function () {
+    terminateTest("You ended the test.");
+};
+
+
+// ------------------------------------
+let duration = {{ test.duration_minutes }} * 60;
+
+function startTimer() {
+    let box = document.getElementById("timerBox");
+
+    let timer = setInterval(() => {
+        let m = Math.floor(duration / 60);
+        let s = duration % 60;
+
+        box.innerHTML = m + "m : " + s + "s";
+
+        if (duration <= 0) {
+            clearInterval(timer);
+            terminateTest("Time is up. Test ended.");
+        }
+        duration--;
+    }, 1000);
+}
+
+
+// ------------------------------------
+function submitTest() {
+    const fd = new FormData(document.getElementById("testForm"));
+
+    fetch("/test/submit", {
+        method: "POST",
+        body: fd
+    })
+    .then(r => r.json())
+    .then(res => {
+        if (res.success) {
+            alert("Test submitted successfully!");
+            window.close();
+        } else {
+            alert("Error submitting test!");
+        }
+    });
+}
+
+</script>
+
+</body>
+</html>

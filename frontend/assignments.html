@@ -1,0 +1,43 @@
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Assignments</h2>
+    <a href="/create-assignment" class="btn btn-primary">+ Create Assignment</a>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Assignment Name</th>
+            <th>Skill</th>
+            <th>Experience</th>
+            <th>Created</th>
+            <th>Send</th>
+            <th>Delete</th>
+        </tr>
+    </thead>
+
+    <tbody id="assignmentTableBody">
+        {% for a in assignments %}
+        <tr id="row-{{ a.id }}">
+            <td>{{ a.assignment_name }}</td>
+            <td>{{ a.skill_tag }}</td>
+            <td>{{ a.experience_tag }}</td>
+            <td>{{ a.created_at }}</td>
+
+            <td>
+                <button class="btn btn-success btn-sm"
+                        onclick="openSendAssignmentPopup('{{ a.id }}', '{{ a.assignment_name }}')">
+                    Send
+                </button>
+            </td>
+
+            <td>
+                <button class="btn btn-danger btn-sm"
+                        onclick="deleteAssignment('{{ a.id }}')">
+                    Delete
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+

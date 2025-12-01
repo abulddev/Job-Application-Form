@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body { height: 100vh; }
+    .page-wrapper { flex: 1; overflow-y: auto; }
+    .header-actions { display: flex; flex-direction: column; margin-left: 0.5rem; }
+    .avatar-circle {
+      width: 40px; height: 40px; border-radius: 50%;
+      background-color: #0d6efd; display: inline-flex;
+      align-items: center; justify-content: center;
+      color: white; font-weight: bold; cursor: pointer;
+      position: relative; z-index: 100;
+    }
+    .tooltip {
+      position: absolute; top: 50px; left: 50%;
+      transform: translateX(-50%); background: #000; color: #fff;
+      padding: 4px 8px; border-radius: 4px; font-size: 12px;
+      display: none; white-space: nowrap; z-index: 101;
+    }
+    .header-right {
+      display: flex; align-items: center; gap: 0.5rem;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+
+<body class="border-top-wide border-primary d-flex">
+
+  <!-- SIDEBAR -->
+  <aside class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end">
+    <div class="container-fluid">
+      <a href="#" class="navbar-brand">Company Admin</a>
+
+      <ul class="navbar-nav flex-column">
+
+        <li class="nav-item"><a href="#" class="nav-link" onclick="toggleAssignments(event)">Result</a></li>
+
+        <li class="nav-item"><a href="/admin/question-bank" class="nav-link">Question Bank</a></li>
+
+        <li class="nav-item"><a href="#" class="nav-link" onclick="loadTests(event)">Questionier</a></li>
+
+        <!-- NEW -->
+        <li class="nav-item"><a href="#" class="nav-link" onclick="loadAssignments(event)">Assignments</a></li>
+
+      </ul>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="page-wrapper flex-fill">
+    <header class="navbar navbar-expand navbar-light border-bottom">
+      <div class="container-fluid d-flex justify-content-end header-right">
+        <div id="header-action-area" class="header-actions"></div>
+
+        <div class="avatar-circle" id="admin-avatar">
+          {{ admin_initials }}
+          <div class="tooltip" id="admin-tooltip">{{ admin_email }}</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+      <div class="container-fluid" id="dashboard-content">
+        <p>Welcome to the Admin Dashboard. Click "Assignments" to start.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOBAL SEND POPUP -->
+  <div class="modal fade" id="sendTestModal" tabindex="-1">
+    <div class="modal-dialog modal-md">
+      <div class="modal-content p-3">
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="sendTestTitle">Send Test</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          <form id="sendTestForm">
+            <input type="hidden" id="sendTestID" name="test_id">
+
+            <p class="fw-bold">Enter Candidate Name & Email (max 20):</p>
+
+            <div id="emailList"></div>
+
+            <button type="button" class="btn btn-outline-primary w-100 mt-2"
+                    onclick="addEmailField()">+ Add Candidate</button>
+
+            <small class="text-muted d-block mt-1">
+              Tip: Paste comma / space / newline separated emails — auto-split.
+            </small>
+          </form>
+
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-success" id="sendBtn">Send</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core/dist/js/tabler.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    /* TOOLTIP */
+    document.addEventListener("DOMContentLoaded", () => {
+      const avatar = document.getElementById('admin-avatar');
+      const tooltip = document.getElementById('admin-tooltip');
+      let visible = false;
+
+      avatar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        visible = !visible;
+        tooltip.style.display = visible ? 'block' : 'none';
+      });
+
+      document.addEventListener('click', () => {
+        tooltip.style.display = 'none';
+        visible = false;
+      });
+    });
+
+    /* LOAD SECTIONS */
+    function toggleAssignments(e){ e.preventDefault(); fetch('/load-dashboard').then(r=>r.text()).then(html=>{document.getElementById("dashboard-content").innerHTML=html;}); }
+    function loadTests(e){ e.preventDefault(); fetch('/load-tests').then(r=>r.text()).then(html=>{document.getElementById("dashboard-content").innerHTML=html;}); }
+    function openTestDetail(id){ fetch(`/admin/test/${id}`).then(r=>r.text()).then(html=>{document.getElementById("dashboard-content").innerHTML=html;}); }
+
+    /* LOAD ASSIGNMENTS */
+    function loadAssignments(e){ 
+      e.preventDefault();
+      fetch('/assignments')
+        .then(r => r.text())
+        .then(html => {
+          document.getElementById("dashboard-content").innerHTML = html;
+        });
+    }
+
+    function deleteAssignment(id) {
+      if (!confirm("Delete this assignment?")) return;
+
+      fetch(`/delete-assignment-list/${id}`, { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+
+          if (data.success) {
+            const row = document.getElementById("row-" + id);
+            if (row) row.remove();
+          } else {
+            alert("Error: " + data.error);
+          }
+        })
+        .catch(err => alert("Request Failed: " + err));
+    }
+
+    /* OPEN SEND ASSIGNMENT POPUP */
+   function openSendAssignmentPopup(id, name) {
+     console.log("OPEN POPUP WITH ID:", id);
+     const hidden = document.getElementById("sendTestID");
+
+     // Always force correct name & value
+     hidden.setAttribute("name", "assignment_id");
+     hidden.value = id;
+
+     document.getElementById("sendTestTitle").innerText = "Send Assignment: " + name;
+
+     document.getElementById("emailList").innerHTML = "";
+     addEmailField();
+
+     window.sendMode = "assignment";
+
+     sendModal = new bootstrap.Modal(document.getElementById("sendTestModal"));
+     sendModal.show();
+    }
+	
+    /* OPEN SEND TEST POPUP */
+    let sendModal = null;
+
+    function openSendPopup(testId, testName) {
+      const hidden = document.getElementById("sendTestID");
+
+      // Always force correct name & value
+      hidden.setAttribute("name", "test_id");
+      hidden.value = testId;
+
+      document.getElementById("sendTestTitle").innerText = "Send Test: " + testName;
+
+      document.getElementById("emailList").innerHTML = "";
+      addEmailField();
+
+      window.sendMode = "test";
+
+      sendModal = new bootstrap.Modal(document.getElementById("sendTestModal"));
+      sendModal.show();
+    }
+
+
+    /* ADD EMAIL FIELD */
+    function addEmailField(nameVal = "", emailVal = "") {
+      const list = document.getElementById("emailList");
+      const count = list.children.length;
+
+      if (count >= 20) return alert("Max 20 candidates allowed");
+
+      const i = count + 1;
+
+      const row = document.createElement("div");
+      row.className = "input-group mb-2";
+      row.id = "emailRow" + i;
+
+      row.innerHTML = `
+        <span class="input-group-text">${i}</span>
+
+        <input type="text" class="form-control" name="name${i}"
+               placeholder="Candidate Name" value="${nameVal}" required>
+
+        <input type="email" class="form-control email-input" name="email${i}"
+               placeholder="candidate@gmail.com" value="${emailVal}"
+               onpaste="handlePaste(event)" required>
+
+        <button class="btn btn-danger" type="button" onclick="removeEmailField(${i})">X</button>
+      `;
+
+      list.appendChild(row);
+    }
+
+    function removeEmailField(i) {
+      const row = document.getElementById("emailRow" + i);
+      if (row) row.remove();
+    }
+
+    function handlePaste(e) {
+      const text = e.clipboardData.getData("text");
+
+      if (!text.match(/[@,\s\n]/)) return;
+
+      e.preventDefault();
+
+      const parts = text.split(/[\s,]+/);
+
+      parts.forEach(val => {
+        if (val.includes("@")) addEmailField("", val);
+      });
+    }
+  </script>
+
+  <!-- ⭐ FINAL MERGED FIXED SEND SCRIPT ⭐ -->
+  <script>
+  document.addEventListener("click", function (e) {
+
+      if (e.target && e.target.id === "sendBtn") {
+
+          const form = document.getElementById("sendTestForm");
+          if (!form) return alert("Form missing!");
+
+          const fd = new FormData(form);
+
+          let url = "/admin/send-test";
+
+          if (window.sendMode === "assignment") {
+              url = "/admin/send-assignment";
+          }
+
+          fetch(url, {
+              method: "POST",
+              body: fd
+          })
+          .then(res => res.json())
+          .then(data => {
+
+              if (data.success) {
+
+                  if (window.sendMode === "assignment") {
+                      alert("Assignment sent successfully!");
+                  } else {
+                      alert("Test sent successfully!");
+                  }
+
+                  let modal = bootstrap.Modal.getInstance(
+                      document.getElementById("sendTestModal")
+                  );
+
+                  modal.hide();
+                  form.reset();
+
+                  if (window.sendMode === "assignment") {
+                      fetch("/assignments").then(r => r.text())
+                      .then(html => {
+                          document.getElementById("dashboard-content").innerHTML = html;
+                      });
+                  } else {
+                      fetch("/load-tests").then(r => r.text())
+                      .then(html => {
+                          document.getElementById("dashboard-content").innerHTML = html;
+                      });
+                  }
+
+              } else {
+                  alert("Error: " + data.error);
+              }
+          });
+      }
+
+  });
+  </script>
+
+</body>
+</html>

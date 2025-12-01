@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Submission Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
+</head>
+<body class="p-4">
+
+<a href="/dashboard" class="btn btn-dark" style="position:absolute; top:20px; right:20px;">
+    🏠 Home
+</a>
+
+<div class="container">
+
+    <h2 class="mb-4">Submission Details</h2>
+
+    <!-- Candidate Info -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Candidate Information</strong></div>
+        <div class="card-body">
+            <p><strong>Name:</strong> {{ submission.candidate_name or submission.candidate_email.split('@')[0] }}</p>
+            <p><strong>Email:</strong> {{ submission.candidate_email }}</p>
+            <p><strong>Type:</strong> {{ submission.job_type }}</p>
+        </div>
+    </div>
+
+    <!-- Submission Information -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Submission Information</strong></div>
+        <div class="card-body">
+
+            <p><strong>Title:</strong> {{ submission.title }}</p>
+
+            <p><strong>Description:</strong></p>
+            <div class="border p-2 rounded">
+
+                {% if description_items and description_items|length > 0 %}
+                    {% for d in description_items %}
+                        <p><strong>Text:</strong> {{ d.text }}</p>
+
+                        {% if d.file %}
+                            <p><strong>File:</strong> {{ d.file }}</p>
+                        {% endif %}
+                        <hr>
+                    {% endfor %}
+                {% else %}
+                    {{ submission.description }}
+                {% endif %}
+            </div>
+
+            <p class="mt-3"><strong>Due Date:</strong> {{ submission.due_date }}</p>
+            <p><strong>Status:</strong> {{ submission.verification_status }}</p>
+        </div>
+    </div>
+
+    {% if submission.explanation %}
+    <div class="card mb-4">
+        <div class="card-header"><strong>Candidate Written Answer</strong></div>
+        <div class="card-body">
+            <pre style="white-space: pre-wrap;">{{ submission.explanation }}</pre>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if attachments %}
+    <div class="card mb-4">
+        <div class="card-header"><strong>Submitted Files</strong></div>
+        <div class="card-body">
+            {% for f in attachments %}
+                <a href="{{ f.file_path }}" download class="btn btn-primary btn-sm mb-2">
+                    {{ f.file_name }}
+                </a><br>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- TEST MCQs -->
+    {% if submission.job_type == "Test" and mcqs %}
+    <div class="card mb-4">
+        <div class="card-header"><strong>MCQ Answers</strong></div>
+        <div class="card-body">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Question</th>
+                        <th>Correct Answer</th>
+                        <th>Candidate Answer</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in mcqs %}
+                    <tr>
+                        <td>{{ m.question_text }}</td>
+                        <td>{{ m.correct_option }}</td>
+                        <td>{{ m.candidate_answer }}</td>
+                        <td>
+                            {% if m.is_correct %}
+                                <span class="text-success fw-bold">✔ Correct</span>
+                            {% else %}
+                                <span class="text-danger fw-bold">✘ Wrong</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- LLM FEEDBACK (FIXED!!) -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>LLM Verification Result</strong></div>
+        <div class="card-body">
+            {% if submission.llm_feedback %}
+                <pre style="white-space: pre-wrap;">{{ submission.llm_feedback }}</pre>
+
+            {% elif submission.llm_result %}
+                <pre style="white-space: pre-wrap;">{{ submission.llm_result }}</pre>
+
+            {% else %}
+                <p>No LLM verification yet.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- SCORE SECTION -->
+    <div class="card mb-4">
+        <div class="card-header"><strong>Score Summary</strong></div>
+        <div class="card-body">
+
+            <p><strong>LLM Score:</strong> {{ submission.llm_score }}</p>
+
+            {% if submission.manual_score %}
+                <p><strong>Manual Score:</strong> {{ submission.manual_score }}/10</p>
+            {% endif %}
+
+            {% if submission.job_type == "Test" %}
+                <p><strong>MCQ Score:</strong> {{ mcq_score }}/{{ mcq_total }}</p>
+            {% endif %}
+
+            {% if submission.job_type == "Assignment" %}
+            <hr>
+            <form action="/admin/manual-score/{{ submission.submission_id }}" method="post">
+                <label><strong>Manual Score (0–10):</strong></label>
+                <input type="number" name="manual_score" min="0" max="10" class="form-control mb-2" required>
+                <button class="btn btn-success">Save Manual Score</button>
+            </form>
+            {% endif %}
+
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

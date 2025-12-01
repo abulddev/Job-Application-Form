@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Test</title>
+    <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
+</head>
+<body class="p-4">
+
+<h2>Create Test</h2>
+
+<!-- ✅ SUCCESS MESSAGE ADDED HERE -->
+{% if success %}
+<div class="alert alert-success">
+    {{ message }}
+</div>
+{% endif %}
+<!-- END SUCCESS MESSAGE -->
+
+<form id="createTestForm" method="POST" action="/admin/save-test">
+
+    <label class="form-label">Test Name</label>
+    <input type="text" name="test_name" class="form-control" required>
+
+    <label class="form-label mt-3">Total Marks</label>
+    <input type="number" name="total_marks" class="form-control" required>
+
+    <label class="form-label mt-3">Duration (Minutes)</label>
+    <input type="number" name="duration" class="form-control" required>
+
+    <label class="form-label mt-3">Questions Selected</label>
+    <ul>
+        {% for q in questions %}
+            <li>{{ q.id }} — {{ q.question_text }}</li>
+        {% endfor %}
+    </ul>
+
+    <!-- hidden IDs for backend -->
+    <input type="hidden" name="question_ids" value="{{ ids }}">
+
+    <button class="btn btn-success mt-3">Create Test</button>
+
+</form>
+
+</body>
+</html>

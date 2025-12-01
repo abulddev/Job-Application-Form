@@ -1,0 +1,228 @@
+<h2 class="mb-3">Created Tests</h2>
+
+{% if success %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+
+{% if tests %}
+<table class="table table-bordered">
+    <thead>
+    <tr>
+        <th>Test Name</th>
+        <th>Total Marks</th>
+        <th>Duration</th>
+        <th>Created</th>
+        <th>Send</th>
+        <th>Delete</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    {% for t in tests %}
+    <tr>
+        <td onclick="openTestDetail({{ t.id }})" style="cursor:pointer;">
+            {{ t.test_name }}
+        </td>
+        <td>{{ t.total_marks }}</td>
+        <td>{{ t.duration_minutes }} min</td>
+        <td>{{ t.created_at }}</td>
+
+        <td>
+            <button class="btn btn-primary btn-sm"
+                    onclick="openSendPopup({{ t.id }}, '{{ t.test_name }}'); event.stopPropagation();">
+                Send
+            </button>
+        </td>
+
+        <!-- DELETE BUTTON -->
+        <td>
+            <form method="post" action="/delete-test/{{ t.id }}"
+                  onsubmit="event.stopPropagation(); return confirm('Delete this test?');">
+                <button class="btn btn-danger btn-sm">Delete</button>
+            </form>
+        </td>
+
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>No tests created yet.</p>
+{% endif %}
+
+
+<!-- ############################################################### -->
+<!-- ##################### SEND TEST POPUP ######################### -->
+<!-- ############################################################### -->
+
+<div class="modal fade" id="sendTestModal" tabindex="-1">
+    <div class="modal-dialog modal-md">
+        <div class="modal-content p-3">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="sendTestTitle">Send Test</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <form id="sendTestForm">
+                    <input type="hidden" name="test_id" id="sendTestID">
+
+                    <p class="fw-bold">Enter Candidate Name & Email (max 20):</p>
+
+                    <div id="emailList"></div>
+
+                    <button type="button" class="btn btn-outline-primary w-100 mt-2"
+                            onclick="addEmailField()">
+                        + Add email 
+                    </button>
+
+                    <small class="text-muted mt-2 d-block">
+                        Tip: Paste comma / space / newline separated emails — auto-split.
+                    </small>
+                </form>
+
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button class="btn btn-success" id="sendBtn">Send Test</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+<script>
+let sendModal = null;
+
+/* --------------------------------------------------------- */
+/* OPEN SEND POPUP                                           */
+/* --------------------------------------------------------- */
+function openSendPopup(testId, testName) {
+    document.getElementById("sendTestID").value = testId;
+    document.getElementById("sendTestTitle").innerText = "Send Test: " + testName;
+
+    const list = document.getElementById("emailList");
+    list.innerHTML = "";
+
+    addEmailField();
+
+    sendModal = new bootstrap.Modal(document.getElementById("sendTestModal"));
+    sendModal.show();
+}
+
+/* --------------------------------------------------------- */
+/* ADD NAME + EMAIL ROW                                      */
+/* --------------------------------------------------------- */
+function addEmailField(nameValue = "", emailValue = "") {
+    const list = document.getElementById("emailList");
+    const count = list.children.length;
+
+    if (count >= 20) {
+        alert("Maximum 20 candidates allowed");
+        return;
+    }
+
+    const i = count + 1;
+
+    const row = document.createElement("div");
+    row.className = "input-group mb-2";
+    row.id = "emailRow" + i;
+
+    row.innerHTML = `
+        <span class="input-group-text">${i}</span>
+
+        <input type="text"
+               class="form-control"
+               name="name${i}"
+               placeholder="Candidate Name"
+               value="${nameValue}"
+               required>
+
+        <input type="email"
+               class="form-control email-input"
+               name="email${i}"
+               placeholder="candidate@gmail.com"
+               value="${emailValue}"
+               onpaste="handlePaste(event)"
+               required>
+
+        <button class="btn btn-danger" type="button" onclick="removeEmailField(${i})">X</button>
+    `;
+
+    list.appendChild(row);
+}
+
+/* --------------------------------------------------------- */
+/* REMOVE ROW                                                 */
+/* --------------------------------------------------------- */
+function removeEmailField(i) {
+    const row = document.getElementById("emailRow" + i);
+    if (row) row.remove();
+}
+
+/* --------------------------------------------------------- */
+/* AUTO SPLIT PASTED EMAIL LIST                              */
+/* --------------------------------------------------------- */
+function handlePaste(e) {
+    const text = e.clipboardData.getData("text");
+
+    if (!text.includes(",") && !text.includes("\n") && !text.includes(" ")) return;
+
+    e.preventDefault();
+
+    const emails = text
+        .replace(/\s+/g, " ")
+        .split(/[\s,]+/);
+
+    emails.forEach(email => {
+        if (email.includes("@")) {
+            addEmailField("", email);
+        }
+    });
+}
+
+/* --------------------------------------------------------- */
+/* EMAIL INPUT LISTENER                                      */
+/* --------------------------------------------------------- */
+document.addEventListener("focusin", function(e) {
+    if (e.target.classList.contains("email-input")) {
+        e.target.onpaste = handlePaste;
+    }
+});
+
+/* --------------------------------------------------------- */
+/* SEND TEST REQUEST                                         */
+/* --------------------------------------------------------- */
+document.addEventListener("click", function(e) {
+    if (e.target.id !== "sendBtn") return;
+
+    const form = document.getElementById("sendTestForm");
+    const fd = new FormData(form);
+
+    fetch("/admin/send-test", {
+        method: "POST",
+        body: fd
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert("Test sent successfully!");
+            sendModal.hide();
+            form.reset();
+
+            fetch("/load-tests")
+                .then(r => r.text())
+                .then(html => {
+                    document.getElementById("dashboard-content").innerHTML = html;
+                });
+
+        } else {
+            alert("Error: " + data.error);
+        }
+    });
+});
+</script>

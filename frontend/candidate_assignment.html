@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ assignment.assignment_name }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="p-4">
+  <div class="container">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1>{{ assignment.assignment_name }}</h1>
+      <div>
+        {% if assignment.due_date %}
+          <small class="text-muted">Due: {{ assignment.due_date }}</small>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Skill + Experience -->
+    <div class="mb-4">
+      <strong>Skill:</strong> {{ assignment.skill_tag or "-" }} &nbsp; | &nbsp;
+      <strong>Experience:</strong> {{ assignment.experience_tag or "-" }}
+    </div>
+
+    <hr/>
+
+    <!-- JSON BASED BLOCK RENDERING -->
+    <div class="mb-4">
+      <h4>Description</h4>
+
+      <div style="background:#f8f9fa; padding:15px; border-radius:6px; border:1px solid #e3e3e3;">
+
+        {% for block in scenario_blocks %}
+          <p style="white-space:pre-wrap; margin-bottom:6px;">
+            {{ block.text }}
+          </p>
+
+          {% if block.file %}
+            {% set blockfile = block.file | replace("uploads/", "") %}
+            {% set ext = blockfile.split('.')[-1].lower() %}
+
+            <div class="mb-3 ms-3 d-flex gap-2 align-items-center">
+              <span>📎 {{ blockfile }}</span>
+
+              {% if ext in ["ppt","pptx","doc","docx","xls","xlsx"] %}
+                <!-- OFFICE FILE VIEWER -->
+                <a 
+                  href="https://docs.google.com/gview?url={{ base_url }}/uploads/{{ blockfile }}&embedded=true"
+                  target="_blank"
+                  class="btn btn-sm btn-outline-secondary">
+                  Open
+                </a>
+              {% else %}
+                <!-- NORMAL INLINE VIEW -->
+                <a 
+                  href="/view-file/{{ blockfile }}?preview=1"
+                  target="_blank"
+                  class="btn btn-sm btn-outline-secondary">
+                  Open
+                </a>
+              {% endif %}
+
+              <a href="/download-file/{{ blockfile }}" class="btn btn-sm btn-secondary">
+                Download
+              </a>
+            </div>
+          {% endif %}
+
+          <hr/>
+        {% endfor %}
+
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- Explanation Block -->
+    <div class="mb-4">
+      <h4>Your Explanation</h4>
+
+      <textarea 
+        id="explanation" 
+        class="form-control" 
+        rows="6" 
+        placeholder="Write your explanation here..."
+        {% if is_submitted == 1 %} disabled {% endif %}
+      >{{ saved_explanation }}</textarea>
+
+      <!-- PREVIOUS FILE -->
+      {% if saved_file %}
+        {% set filename = saved_file | replace("uploads/", "") %}
+        {% set file_ext = filename.split('.')[-1].lower() %}
+
+        <div class="mt-3">
+          <label class="form-label">Your Uploaded File:</label>
+
+          <div class="d-flex gap-2">
+
+            {% if file_ext in ["ppt","pptx","doc","docx","xls","xlsx"] %}
+              <a 
+                href="https://docs.google.com/gview?url={{ base_url }}/uploads/{{ filename }}&embedded=true"
+                target="_blank" 
+                class="btn btn-sm btn-outline-secondary">
+                Open
+              </a>
+            {% else %}
+              <a 
+                href="/view-file/{{ filename }}?preview=1"
+                target="_blank"
+                class="btn btn-sm btn-outline-secondary">
+                Open
+              </a>
+            {% endif %}
+
+            <a href="/download-file/{{ filename }}" class="btn btn-sm btn-secondary">
+              Download
+            </a>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- NEW FILE UPLOAD -->
+      {% if is_submitted == 0 %}
+        <label class="form-label mt-3">Add Attachment (Optional)</label>
+        <input 
+          type="file" 
+          id="exp_file" 
+          class="form-control"
+          accept=".jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx,.ppt,.pptx,.pdf"
+        >
+      {% endif %}
+    </div>
+
+    <!-- Save + Submit Buttons -->
+    <div class="d-flex gap-2">
+
+      {% if is_submitted == 0 %}
+        <button id="saveBtn" class="btn btn-outline-primary">Save Draft</button>
+        <button id="submitBtn" class="btn btn-primary">Submit Assignment</button>
+      {% else %}
+        <button class="btn btn-success" disabled>Already Submitted</button>
+      {% endif %}
+
+    </div>
+
+  </div>
+
+  <!-- SCRIPT -->
+  {% if is_submitted == 0 %}
+  <script>
+    // --- SAVE DRAFT ---
+    document.getElementById("saveBtn").addEventListener("click", async () => {
+
+      const formData = new FormData();
+      formData.append("explanation", document.getElementById("explanation").value);
+
+      const fileInput = document.getElementById("exp_file");
+      if (fileInput.files.length > 0) {
+        formData.append("file", fileInput.files[0]);
+      }
+
+      await fetch(location.pathname + "/save", {
+        method: "POST",
+        body: formData
+      });
+
+      alert("Draft saved!");
+    });
+
+    // --- SUBMIT ASSIGNMENT ---
+    document.getElementById("submitBtn").addEventListener("click", async () => {
+
+      const formData = new FormData();
+      formData.append("explanation", document.getElementById("explanation").value);
+
+      const fileInput = document.getElementById("exp_file");
+      if (fileInput.files.length > 0) {
+        formData.append("file", fileInput.files[0]);
+      }
+
+      await fetch(location.pathname + "/submit", {
+        method: "POST",
+        body: formData
+      });
+
+      alert("Assignment submitted!");
+      location.reload();
+    });
+  </script>
+  {% endif %}
+
+</body>
+</html>

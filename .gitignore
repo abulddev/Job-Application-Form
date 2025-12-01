@@ -1,0 +1,24 @@
+# Ignore MySQL
+MySQL/
+mysql/
+
+# Ignore GPT4ALL binaries
+GPT4ALL/
+gpt4all/
+*.bin
+*.exe
+*.dll
+
+# Ignore virtual environment
+venv/
+env/
+
+# Ignore __pycache__
+__pycache__/
+
+# Ignore logs
+*.log
+
+# Ignore system files
+.DS_Store
+Thumbs.db

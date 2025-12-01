@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta-name"viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Login</title>
+
+  <!-- Tabler CSS CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
+</head>
+<body class="border-top-wide border-primary d-flex flex-column">
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+
+      <div class="text-center mb-4">
+        <h1>Company Admin Login</h1>
+      </div>
+
+      <form action="/login" method="post" class="card card-md">
+        <div class="card-body">
+
+          <!-- 🔥 ERROR MESSAGE BOX -->
+          {% if error %}
+          <div class="alert alert-danger" role="alert">
+            {{ error }}
+          </div>
+          {% endif %}
+          <!-- END ERROR -->
+
+          <div class="mb-3">
+            <label class="form-label">Email address</label>
+            <input type="email" name="email" class="form-control" placeholder="Enter email" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+          </div>
+
+          <div class="mb-3">
+            <button type="submit" class="btn btn-primary w-100">Login</button>
+          </div>
+
+          <div class="text-center mt-3">
+            <a href="/forgot-password" class="text-primary">Forgot Password?</a>
+          </div>
+
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Tabler JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/js/tabler.min.js"></script>
+</body>
+</html>
