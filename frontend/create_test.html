@@ -5,16 +5,18 @@
     <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
 </head>
 <body class="p-4">
+<!-- ⭐ HOME BUTTON (top-right) ⭐ -->
+<a href="/dashboard" class="btn btn-dark" style="position:absolute; top:20px; right:20px;">
+    🏠 Home
+</a>
 
 <h2>Create Test</h2>
 
-<!-- ✅ SUCCESS MESSAGE ADDED HERE -->
 {% if success %}
 <div class="alert alert-success">
     {{ message }}
 </div>
 {% endif %}
-<!-- END SUCCESS MESSAGE -->
 
 <form id="createTestForm" method="POST" action="/admin/save-test">
 
@@ -27,6 +29,10 @@
     <label class="form-label mt-3">Duration (Minutes)</label>
     <input type="number" name="duration" class="form-control" required>
 
+    <!-- ⭐ NEW DUE DATE FIELD WITH NO-PAST RESTRICTION -->
+    <label class="form-label mt-3">Due Date</label>
+    <input type="date" name="due_date" id="due_date" class="form-control" required>
+
     <label class="form-label mt-3">Questions Selected</label>
     <ul>
         {% for q in questions %}
@@ -34,12 +40,17 @@
         {% endfor %}
     </ul>
 
-    <!-- hidden IDs for backend -->
     <input type="hidden" name="question_ids" value="{{ ids }}">
 
     <button class="btn btn-success mt-3">Create Test</button>
 
 </form>
+
+<script>
+// ⭐ Prevent past dates
+const today = new Date().toISOString().split("T")[0];
+document.getElementById("due_date").setAttribute("min", today);
+</script>
 
 </body>
 </html>

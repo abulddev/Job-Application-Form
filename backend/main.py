@@ -286,33 +286,25 @@ def dashboard(request: Request):
 @app.post("/delete-assignment/{assignment_id}")
 def delete_assignment(assignment_id: int):
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
 
     try:
-        # 1) Get test_id from assignment
-        cursor.execute("SELECT test_id FROM assignments WHERE id = %s", (assignment_id,))
-        row = cursor.fetchone()
+        # Delete candidate assignment rows
+        cursor.execute("DELETE FROM assignment_candidates WHERE assignment_id = %s", (assignment_id,))
 
-        if row and row["test_id"]:
-            test_id = row["test_id"]
+        # Delete assignment answers (submissions)
+        cursor.execute("DELETE FROM assignment_answers WHERE assignment_id = %s", (assignment_id,))
 
-            # Delete all submissions for this test
-            cursor.execute("DELETE FROM test_submissions WHERE test_id = %s", (test_id,))
-
-            # Delete the test itself
-            cursor.execute("DELETE FROM tests WHERE id = %s", (test_id,))
-
-        # 2) Delete assignment itself
-        cursor.execute("DELETE FROM assignments WHERE id = %s", (assignment_id,))
+        # Delete assignment master
+        cursor.execute("DELETE FROM assignment_master WHERE id = %s", (assignment_id,))
 
         db.commit()
 
     except Exception as e:
         print("Delete Assignment Error:", e)
 
-    finally:
-        cursor.close()
-        db.close()
+    cursor.close()
+    db.close()
 
     return RedirectResponse(url="/dashboard", status_code=303)
 
@@ -337,16 +329,10 @@ def delete_test(test_id: int):
 @app.post("/delete-test-submission/{test_id}")
 def delete_test_submission(test_id: int):
     db = get_db()
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor()
 
     try:
-        # Delete submissions
-        cursor.execute("DELETE FROM test_submissions WHERE test_id = %s", (test_id,))
-
-        # Delete test (correct column is id, NOT test_id)
-        cursor.execute("DELETE FROM tests WHERE id = %s", (test_id,))
-
-        # Also remove assignment linked to this test
+        # Delete all MCQ rows
         cursor.execute("DELETE FROM test_submissions WHERE test_id = %s", (test_id,))
 
         db.commit()
@@ -354,11 +340,11 @@ def delete_test_submission(test_id: int):
     except Exception as e:
         print("Delete Test Error:", e)
 
-    finally:
-        cursor.close()
-        db.close()
+    cursor.close()
+    db.close()
 
     return RedirectResponse(url="/dashboard", status_code=303)
+
 
 @app.post("/delete-assignment-list/{assignment_id}")
 def delete_assignment_list(assignment_id: int):
@@ -932,7 +918,7 @@ def load_dashboard(request: Request):
     cursor = db.cursor(dictionary=True)
 
     # -----------------------------------------------
-    # 1. LOAD ALL ASSIGNMENTS SENT TO CANDIDATES
+    # 1. ASSIGNMENTS (unchanged)
     # -----------------------------------------------
     cursor.execute("""
         SELECT 
@@ -959,7 +945,6 @@ def load_dashboard(request: Request):
                ON aa.assignment_id = ac.assignment_id 
               AND aa.candidate_email = ac.candidate_email
 
-        /* FIXED: LLM JOIN MUST USE SUBMISSION_ID */
         LEFT JOIN llm_results lr 
                ON lr.assignment_id = aa.id
               AND lr.candidate_email = ac.candidate_email
@@ -979,83 +964,74 @@ def load_dashboard(request: Request):
             "title": row["title"],
             "due_date": row["due_date"],
             "job_type": row["job_type"],
-
             "status": "Submitted" if row["is_submitted"] else "Pending",
-
-            "verification_status": (
-                "Verified" if row["llm_score"] is not None else "Pending"
-            ),
-
+            "verification_status": "Verified" if row["llm_score"] is not None else "Pending",
             "llm_score": row["llm_score"],
-
-            "file_or_link": f"/uploaded/{row['file_path']}"
-                            if row["file_path"] else "-",
-
-            "result_link": (
-                f"/admin/view-assignment/{row['submission_id']}"
-                if row["submission_id"] else "-"
-            )
+            "file_or_link": f"/uploaded/{row['file_path']}" if row["file_path"] else "-",
+            "result_link": f"/admin/view-assignment/{row['submission_id']}" if row["submission_id"] else "-"
         })
 
     # -----------------------------------------------
-    # 2. LOAD TEST SUBMISSIONS (NAME FIX APPLIED)
+    # 2. TESTS (fixed: added t.due_date)
     # -----------------------------------------------
     cursor.execute("""
-        SELECT 
+        SELECT
             ts.id,
             ts.test_id,
 
-            /* FIX NAME WITH FALLBACK */
             COALESCE(
-                ts.candidate_name,
-                (SELECT candidate_name 
-                 FROM test_submissions 
+                NULLIF(ts.candidate_name, ''),
+                (SELECT candidate_name
+                 FROM test_submissions
                  WHERE test_id = ts.test_id
-                   AND candidate_name IS NOT NULL
                    AND question_id IS NULL
-                 ORDER BY id DESC LIMIT 1)
+                   AND candidate_name <> ''
+                 ORDER BY id ASC LIMIT 1)
             ) AS candidate_name,
 
-            /* FIX EMAIL WITH FALLBACK */
             COALESCE(
-                ts.candidate_email,
-                (SELECT candidate_email 
-                 FROM test_submissions 
+                NULLIF(ts.candidate_email, ''),
+                (SELECT candidate_email
+                 FROM test_submissions
                  WHERE test_id = ts.test_id
-                   AND candidate_email IS NOT NULL
                    AND question_id IS NULL
-                 ORDER BY id DESC LIMIT 1)
+                   AND candidate_email <> ''
+                 ORDER BY id ASC LIMIT 1)
             ) AS candidate_email,
 
             ts.verification_status,
             ts.llm_score,
             ts.created_at,
-
-            t.test_name
+            t.test_name,
+            t.due_date       -- ⭐ ADDED FIX HERE
         FROM test_submissions ts
         LEFT JOIN tests t ON ts.test_id = t.id
         WHERE ts.question_id IS NULL
-        ORDER BY ts.created_at DESC
+        ORDER BY ts.id DESC
     """)
 
     test_rows = cursor.fetchall()
 
+    unique = {}
+    for row in test_rows:
+        key = (row["test_id"], row["candidate_email"])
+        if key not in unique:
+            unique[key] = row
+
     merged_tests = []
 
-    for t in test_rows:
+    for key, t in unique.items():
         merged_tests.append({
-            "id": t["id"],
+            "submission_id": t["id"],
+            "test_id": t["test_id"],
             "candidate_name": t["candidate_name"],
             "candidate_email": t["candidate_email"],
-
             "title": t["test_name"] if t["test_name"] else "Test Submission",
             "job_type": "Test",
-            "due_date": "-",
-
+            "due_date": t["due_date"],   # ⭐ NOW SHOW DUE DATE
             "status": "Submitted",
             "verification_status": t["verification_status"],
             "llm_score": t["llm_score"],
-
             "file_or_link": f"/admin/view-assignment/{t['id']}",
             "result_link": f"/admin/view-assignment/{t['id']}",
         })
@@ -1488,13 +1464,12 @@ def create_test_page(request: Request, ids: str):
     cursor.close()
     db.close()
 
-    # FIX: return ids
     return templates.TemplateResponse(
         "create_test.html",
         {
             "request": request,
             "questions": questions,
-            "ids": ids   # ← REQUIRED FIX
+            "ids": ids      # keep ids
         }
     )
 
@@ -1506,12 +1481,29 @@ async def save_test(request: Request):
     test_name = form.get("test_name")
     total_marks = form.get("total_marks")
     duration = form.get("duration")
+    due_date = form.get("due_date")        # ⭐ NEW FIELD
     question_ids_raw = form.get("question_ids")
 
-    # Validation
-    if not total_marks or not duration or not question_ids_raw:
+    # -----------------------
+    # BASIC VALIDATION
+    # -----------------------
+    if not total_marks or not duration or not question_ids_raw or not due_date:
         return HTMLResponse("<h3>Error: Missing values</h3>")
 
+    # -----------------------
+    # PREVENT PAST DATES
+    # -----------------------
+    import datetime
+    today = datetime.date.today()
+
+    try:
+        due = datetime.datetime.strptime(due_date, "%Y-%m-%d").date()
+        if due < today:
+            return HTMLResponse("<h3>Error: Due date cannot be in the past</h3>")
+    except:
+        return HTMLResponse("<h3>Error: Invalid due date</h3>")
+
+    # Convert types
     total_marks = int(total_marks)
     duration = int(duration)
 
@@ -1523,18 +1515,18 @@ async def save_test(request: Request):
     db = get_db()
     cursor = db.cursor()
 
-    # Insert test
+    # -----------------------
+    # INSERT WITH DUE DATE
+    # -----------------------
     cursor.execute("""
-        INSERT INTO tests (test_name, total_marks, duration_minutes)
-        VALUES (%s, %s, %s)
-    """, (test_name, total_marks, duration))
+        INSERT INTO tests (test_name, total_marks, duration_minutes, due_date)
+        VALUES (%s, %s, %s, %s)
+    """, (test_name, total_marks, duration, due_date))
 
     test_id = cursor.lastrowid
 
-    # Mark distribution
     per_question = total_marks // len(question_ids)
 
-    # Insert questions into test
     for qid in question_ids:
         cursor.execute("""
             INSERT INTO test_questions (test_id, question_id, question_marks)
@@ -1545,7 +1537,6 @@ async def save_test(request: Request):
     cursor.close()
     db.close()
 
-    # 🎉 Return success HTML INSIDE same page
     return templates.TemplateResponse(
         "create_test.html",
         {
@@ -1553,9 +1544,10 @@ async def save_test(request: Request):
             "success": True,
             "message": f"Test Created Successfully! (ID: {test_id})",
             "test_id": test_id,
-            "questions": []  # not needed now
+            "questions": []
         }
     )
+
 
 fm = FastMail(conf)
 
@@ -1585,6 +1577,7 @@ async def send_test(request: Request):
 
     candidates = []
 
+    # Read up to 20 candidates
     for i in range(1, 21):
         name = form.get(f"name{i}")
         email = form.get(f"email{i}")
@@ -1595,17 +1588,45 @@ async def send_test(request: Request):
                 "email": email.strip()
             })
 
+    db = get_db()
+    cursor = db.cursor()
     sent_to = []
 
     for c in candidates:
-        candidate_email = c["email"]
         candidate_name = c["name"] if c["name"] else "Candidate"
+        candidate_email = c["email"]
 
-        # temp password
+        # ⭐ 1) CHECK IF TEST ENTRY ALREADY EXISTS
+        cursor.execute("""
+            SELECT id FROM test_submissions
+            WHERE test_id = %s AND candidate_email = %s AND question_id IS NULL
+        """, (test_id, candidate_email))
+
+        existing = cursor.fetchone()
+
+        if existing:
+            print(f"Skipping duplicate for: {candidate_email}")
+            continue   # ⭐ SKIP INSERT — prevents duplicates
+
+        # Generate temp password
         temp_password = secrets.token_hex(3)
 
-        # Create magic login link (NO assignment)
-        test_link = f"http://localhost:8000/candidate-login?test_id={test_id}&email={candidate_email}&temp_password={temp_password}"
+        # ⭐ 2) INSERT ONLY IF NOT EXISTS
+        cursor.execute("""
+            INSERT INTO test_submissions 
+            (test_id, candidate_name, candidate_email, verification_status, temp_password, created_at)
+            VALUES (%s, %s, %s, 'Pending', %s, NOW())
+        """, (test_id, candidate_name, candidate_email, temp_password))
+
+        db.commit()
+
+        # Build login link
+        test_link = (
+            f"http://localhost:8000/candidate-login"
+            f"?test_id={test_id}"
+            f"&email={candidate_email}"
+            f"&temp_password={temp_password}"
+        )
 
         subject = "Your Online Assessment is Ready"
 
@@ -1623,6 +1644,9 @@ Recruitment Team
 
         sent_to.append(candidate_email)
         await send_email(candidate_email, subject, message)
+
+    cursor.close()
+    db.close()
 
     return {
         "success": True,
@@ -1751,62 +1775,96 @@ async def submit_test(request: Request):
     form = await request.form()
 
     test_id = form.get("test_id")
-    candidate_name = form.get("candidate_name")
-    candidate_email = form.get("candidate_email")
-    submission_id = form.get("submission_id")   # ⭐ REQUIRED
+    candidate_name = form.get("candidate_name") or ""
+    candidate_email = form.get("candidate_email") or ""
+    submission_id = form.get("submission_id")
 
-    # -----------------------------------------
-    # Extract all MCQ answers
-    # -----------------------------------------
+    # SAFETY: prevent duplicate master rows if missing submission_id
+    if not submission_id:
+        return {"success": False, "error": "Missing submission ID"}
+
+    # Extract answers
     answers = {k: v for k, v in form.items() if k.startswith("answer_")}
 
-    # Convert answers into event_log
+    # Build event log
     event_log = ""
     for key, ans in answers.items():
-        q_id = key.replace("answer_", "")
-        event_log += f"Q{q_id}: {ans}\n"
+        qid = key.replace("answer_", "")
+        event_log += f"Q{qid}: {ans}\n"
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = db.cursor(dictionary=True)
 
-    # -----------------------------------------
-    # ⭐ UPDATE the main submission row
-    # -----------------------------------------
+    # Update master row only
     cursor.execute("""
         UPDATE test_submissions
-        SET event_log = %s,
-            candidate_name = %s,
-            candidate_email = %s,
-            verification_status = 'Pending'
-        WHERE id = %s
+        SET event_log=%s,
+            candidate_name=%s,
+            candidate_email=%s,
+            verification_status='Pending'
+        WHERE id=%s AND question_id IS NULL
     """, (event_log, candidate_name, candidate_email, submission_id))
 
-    # -----------------------------------------
-    # Insert each answer as additional rows
-    # -----------------------------------------
-    for key, answer in answers.items():
-        q_id = key.replace("answer_", "")
-        cursor.execute("""
-            INSERT INTO test_submissions (test_id, question_id, answer)
-            VALUES (%s, %s, %s)
-        """, (test_id, q_id, answer))
+    # Delete old MCQ rows (not main row)
+    cursor.execute("""
+        DELETE FROM test_submissions
+        WHERE test_id=%s 
+          AND candidate_email=%s 
+          AND question_id IS NOT NULL
+    """, (test_id, candidate_email))
 
-    # -----------------------------------------
-    # Mark main row as PROCESSING
-    # -----------------------------------------
+    # Insert new MCQ rows
+    for key, ans in answers.items():
+        qid = key.replace("answer_", "")
+        cursor.execute("""
+            INSERT INTO test_submissions 
+            (test_id, question_id, answer, candidate_name, candidate_email, created_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+        """, (test_id, qid, ans, candidate_name, candidate_email))
+
+    # Compute MCQ Score
+    mcq_score = 0
+    mcq_total = 0
+
+    if answers:
+        qids = [k.replace("answer_", "") for k in answers]
+        cursor.execute(f"""
+            SELECT tq.question_id, tq.question_marks, q.correct_option
+            FROM test_questions tq
+            JOIN questions q ON q.id=tq.question_id
+            WHERE tq.test_id=%s AND tq.question_id IN ({','.join(['%s']*len(qids))})
+        """, [test_id] + qids)
+
+        rows = cursor.fetchall()
+
+        marks = {str(r["question_id"]): int(r["question_marks"]) for r in rows}
+        correct = {str(r["question_id"]): r["correct_option"] for r in rows}
+
+        for key, ans in answers.items():
+            qid = key.replace("answer_", "")
+            mcq_total += marks.get(qid, 0)
+
+            if str(ans).lower().strip() == str(correct.get(qid, "")).lower().strip():
+                mcq_score += marks.get(qid, 0)
+
+    # Save MCQ score
     cursor.execute("""
         UPDATE test_submissions
-        SET verification_status = 'Processing'
-        WHERE id = %s
+        SET mcq_score=%s, mcq_total=%s
+        WHERE id=%s
+    """, (mcq_score, mcq_total, submission_id))
+
+    cursor.execute("""
+        UPDATE test_submissions
+        SET verification_status='Processing'
+        WHERE id=%s
     """, (submission_id,))
-    
+
     db.commit()
     cursor.close()
     db.close()
 
-    # -----------------------------------------
-    # Start Background LLM Verification
-    # -----------------------------------------
+    # Start LLM thread
     import threading
     threading.Thread(
         target=run_llm_verification_test,
@@ -1814,10 +1872,7 @@ async def submit_test(request: Request):
         daemon=True
     ).start()
 
-    return {
-        "success": True,
-        "submission_id": submission_id
-    }
+    return {"success": True, "submission_id": submission_id}
 
     
 @app.post("/test/violation")
@@ -1859,7 +1914,9 @@ async def admin_view_assignment(request: Request, submission_id: int):
     db = get_db()
     cursor = db.cursor(dictionary=True)
 
-    # Load assignment submission
+    # -------------------------------------------------
+    # 1) CHECK IF IT IS AN ASSIGNMENT SUBMISSION
+    # -------------------------------------------------
     cursor.execute("""
         SELECT 
             aa.id AS submission_id,
@@ -1885,7 +1942,9 @@ async def admin_view_assignment(request: Request, submission_id: int):
 
     submission = cursor.fetchone()
 
-    # ----------------- TEST SUBMISSION -----------------
+    # -------------------------------------------------
+    # 2) IF NOT ASSIGNMENT → THIS IS A TEST SUBMISSION
+    # -------------------------------------------------
     if not submission:
 
         cursor.execute("""
@@ -1896,8 +1955,8 @@ async def admin_view_assignment(request: Request, submission_id: int):
                 ts.candidate_email,
 
                 t.test_name AS title,
-                NULL AS description,       -- FIXED (your DB has no description)
-                t.duration_minutes AS due_date,
+                NULL AS description,
+                t.due_date AS due_date,
 
                 'Test' AS job_type,
 
@@ -1907,10 +1966,7 @@ async def admin_view_assignment(request: Request, submission_id: int):
 
                 ts.verification_status,
                 ts.llm_score,
-                ts.llm_feedback AS llm_result,
-                ts.mcq_score,
-                ts.mcq_total
-
+                ts.llm_feedback AS llm_result
             FROM test_submissions ts
             LEFT JOIN tests t ON ts.test_id = t.id
             WHERE ts.id=%s AND ts.question_id IS NULL
@@ -1918,11 +1974,100 @@ async def admin_view_assignment(request: Request, submission_id: int):
 
         test = cursor.fetchone()
 
+        if not test:
+            cursor.close()
+            db.close()
+            return HTMLResponse("<h3>Submission not found.</h3>", status_code=404)
+
+        # -------------------------------------------------
+        # FIX NAME IF EMPTY
+        # -------------------------------------------------
+        if not test["candidate_name"]:
+            cursor.execute("""
+                SELECT candidate_name
+                FROM test_submissions
+                WHERE test_id=%s 
+                  AND candidate_email=%s
+                  AND question_id IS NULL
+                  AND candidate_name IS NOT NULL
+                  AND candidate_name <> ''
+                ORDER BY id DESC LIMIT 1
+            """, (test["assignment_id"], test["candidate_email"]))
+            fb = cursor.fetchone()
+            test["candidate_name"] = fb["candidate_name"] if fb else "Unknown"
+
+        # -------------------------------------------------
+        # FETCH MCQ ANSWERS
+        # -------------------------------------------------
+        cursor.execute("""
+            SELECT 
+                tq.question_id,
+                tq.question_marks,
+                q.question_text,
+                q.correct_option,
+                ts.answer AS candidate_answer
+            FROM test_submissions ts
+            JOIN test_questions tq ON tq.question_id = ts.question_id
+            JOIN questions q ON q.id = ts.question_id
+            WHERE ts.test_id=%s 
+              AND ts.candidate_email=%s
+              AND ts.question_id IS NOT NULL
+            ORDER BY tq.question_id
+        """, (test["assignment_id"], test["candidate_email"]))
+
+        raw_rows = cursor.fetchall()
+
+        unique = {}
+        for row in raw_rows:
+            unique[row["question_id"]] = row
+
+        mcq_rows = list(unique.values())
+
+        mcqs = []
+        mcq_score = 0
+        mcq_total = 0
+
+        for m in mcq_rows:
+            correct = (
+                str(m["candidate_answer"]).strip().lower() ==
+                str(m["correct_option"]).strip().lower()
+            )
+            if correct:
+                mcq_score += int(m["question_marks"])
+
+            mcq_total += int(m["question_marks"])
+
+            mcqs.append({
+                "question_text": m["question_text"],
+                "correct_option": m["correct_option"],
+                "candidate_answer": m["candidate_answer"],
+                "is_correct": correct,
+                "marks": m["question_marks"]
+            })
+
+        # -------------------------------------------------
+        # ⭐ FETCH LLM RESULT PROPERLY
+        # -------------------------------------------------
+        cursor.execute("""
+            SELECT score, reason
+            FROM llm_results_test
+            WHERE submission_id=%s AND candidate_email=%s
+            ORDER BY id DESC LIMIT 1
+        """, (test["submission_id"], test["candidate_email"]))
+
+        llm_test = cursor.fetchone()
+
+        if llm_test:
+            test["llm_score"] = llm_test["score"]
+            test["llm_result"] = llm_test["reason"]
+            test["verification_status"] = "Verified"
+        else:
+            test["llm_score"] = None
+            test["llm_result"] = None
+            test["verification_status"] = "Pending"
+
         cursor.close()
         db.close()
-
-        if not test:
-            return HTMLResponse("<h3>Submission not found.</h3>", status_code=404)
 
         test["submission_type"] = "test"
 
@@ -1930,13 +2075,15 @@ async def admin_view_assignment(request: Request, submission_id: int):
             "request": request,
             "submission": test,
             "description_items": [],
-            "mcqs": [],
-            "mcq_score": test.get("mcq_score", 0),
-            "mcq_total": test.get("mcq_total", 0),
+            "mcqs": mcqs,
+            "mcq_score": mcq_score,
+            "mcq_total": mcq_total,
             "attachments": []
         })
 
-    # ----------------- ASSIGNMENT SUBMISSION -----------------
+    # -------------------------------------------------
+    # 3) ASSIGNMENT SUBMISSION
+    # -------------------------------------------------
     submission["submission_type"] = "assignment"
 
     description_items = []
@@ -1959,7 +2106,6 @@ async def admin_view_assignment(request: Request, submission_id: int):
     submission["llm_feedback"] = llm["reason"] if llm else None
     submission["verification_status"] = "Verified" if llm else "Pending"
 
-    # Attachments
     attachments = []
 
     def normalize_path(path):
@@ -1969,9 +2115,8 @@ async def admin_view_assignment(request: Request, submission_id: int):
         return f"/uploads/{path}"
 
     if submission.get("file_path"):
-        file_name = submission["file_path"].split("/")[-1]
         attachments.append({
-            "file_name": file_name,
+            "file_name": submission["file_path"].split("/")[-1],
             "file_path": normalize_path(submission["file_path"])
         })
 
@@ -2092,22 +2237,34 @@ def load_offline_llm():
 # ============================================================
 
 def extract_score_and_eligibility(text):
+    import re
     try:
-        lines = text.split("\n")
-        score_line = next((x for x in lines if "Score:" in x), None)
+        # Try pattern: Score: X
+        match = re.search(r"Score\s*[:\-]?\s*(\d+)", text, re.IGNORECASE)
+        if match:
+            score = int(match.group(1))
+            eligible = "Eligible" if score >= 5 else "Not Eligible"
+            return score, eligible
 
-        if score_line:
-            score_str = "".join([c for c in score_line if c.isdigit()])
-            score = int(score_str) if score_str.isdigit() else 0
-        else:
-            score = 0
+        # Try pattern: (X) inside parentheses
+        match2 = re.search(r"\((\d+)\)", text)
+        if match2:
+            score = int(match2.group(1))
+            eligible = "Eligible" if score >= 5 else "Not Eligible"
+            return score, eligible
 
-        eligible = "Eligible" if score >= 5 else "Not Eligible"
+        # Try pattern: "scored X" 
+        match3 = re.search(r"scored\s+(\d+)", text, re.IGNORECASE)
+        if match3:
+            score = int(match3.group(1))
+            eligible = "Eligible" if score >= 5 else "Not Eligible"
+            return score, eligible
 
-        return score, eligible
-    except:
+        # default
         return 0, "Not Eligible"
 
+    except:
+        return 0, "Not Eligible"
 
 # ============================================================
 # 🚀 ASSIGNMENT LLM VERIFICATION
@@ -2253,8 +2410,9 @@ def run_llm_verification_test(submission_id, test_id, candidate_email):
     db = get_db()
     cursor = db.cursor(dictionary=True)
 
+    # LOAD MAIN SUBMISSION
     cursor.execute("""
-        SELECT ts.*, t.total_marks, t.test_name
+        SELECT ts.*, t.test_name
         FROM test_submissions ts
         LEFT JOIN tests t ON ts.test_id = t.id
         WHERE ts.id=%s
@@ -2262,64 +2420,111 @@ def run_llm_verification_test(submission_id, test_id, candidate_email):
     sub = cursor.fetchone()
 
     if not sub:
-        print("LLM ERROR: Test submission not found")
+        print("LLM ERROR: Submission not found")
         cursor.close()
         db.close()
         return
 
+    # FETCH MCQs
+    cursor.execute("""
+        SELECT 
+            tq.question_id,
+            q.question_text,
+            q.correct_option,
+            tq.question_marks,
+            ts.answer AS candidate_answer
+        FROM test_submissions ts
+        JOIN test_questions tq ON ts.question_id = tq.question_id
+        JOIN questions q ON q.id = tq.question_id
+        WHERE ts.test_id=%s AND ts.candidate_email=%s
+        ORDER BY tq.question_id
+    """, (test_id, candidate_email))
+
+    mcqs = cursor.fetchall()
+
     cursor.close()
     db.close()
 
-    # Build Prompt
-    prompt = f"""
-Strict test evaluator.
+    # ------------------------------------------
+    # 👉 CALCULATE MCQ SCORE FIRST (TRUE SCORE)
+    # ------------------------------------------
+    true_score = 0
+    total_marks = 0
+    detailed_wrong = []   # nicer detailed feedback
 
-TEST NAME: {sub.get("test_name")}
-Candidate Email: {candidate_email}
+    for m in mcqs:
+        total_marks += int(m["question_marks"])
 
-ANSWERS:
-{sub.get("event_log")}
+        candidate_ans = str(m["candidate_answer"]).strip().lower()
+        correct_ans = str(m["correct_option"]).strip().lower()
 
-RULES:
-• Evaluate strictly.
-• Score out of {sub.get("total_marks", 10)}
-• >=50% = Eligible.
-"""
+        if candidate_ans == correct_ans:
+            true_score += int(m["question_marks"])
+        else:
+            detailed_wrong.append(
+                f"❌ **Q{m['question_id']} Incorrect**\n"
+                f"**Question:** {m['question_text']}\n"
+                f"**Your Answer:** {m['candidate_answer']}\n"
+                f"**Correct Answer:** {m['correct_option']}\n"
+                f"----------------------------------------"
+            )
 
-    # Run LLM
-    llm = load_offline_llm()
-    output = llm.generate(prompt)
-    score, eligibility = extract_score_and_eligibility(output)
+    # 👉 SCALE SCORE OUT OF 10
+    if total_marks > 0:
+        llm_final_score = round((true_score / total_marks) * 10, 2)
+    else:
+        llm_final_score = 0
 
-    # Save LLM results to backend (✔ FIX: submission_id used)
-    try:
-        requests.post("http://localhost:8000/test/llm-result", data={
-            "submission_id": submission_id, 
-            "test_id": test_id,
-            "candidate_email": candidate_email,
-            "score": score,
-            "mismatch": 0,
-            "reason": output
-        })
-    except Exception as e:
-        print("LLM RESULT SAVE ERROR:", e)
+    # 👉 FEEDBACK (clean & formatted)
+    if not detailed_wrong:
+        feedback_text = "🎉 Excellent performance! All your answers are correct."
+    else:
+        feedback_text = "❌ **Incorrect Answers Found:**\n\n" + "\n\n".join(detailed_wrong)
 
-    # Update main submission table
+    # BUILD STRICT JSON FOR DEBUG LOG
+    result_json = {
+        "score": llm_final_score,
+        "eligible": llm_final_score >= 5,
+        "feedback": feedback_text
+    }
+
+    print("FIXED LLM RESULT:", result_json)
+
+    # ---------------------------------------------
+    # SAVE RESULT TO llm_results_test TABLE
+    # ---------------------------------------------
     db = get_db()
     cursor = db.cursor()
+
+    cursor.execute("""
+        INSERT INTO llm_results_test (submission_id, test_id, candidate_email, score, reason)
+        VALUES (%s, %s, %s, %s, %s)
+    """, (
+        submission_id,
+        test_id,
+        candidate_email,
+        llm_final_score,
+        feedback_text
+    ))
+
+    db.commit()
+
+    # ---------------------------------------------
+    # UPDATE test_submissions
+    # ---------------------------------------------
     cursor.execute("""
         UPDATE test_submissions
         SET verification_status='Verified',
             llm_score=%s,
             llm_feedback=%s
         WHERE id=%s
-    """, (score, output, submission_id))
+    """, (llm_final_score, feedback_text, submission_id))
+
     db.commit()
     cursor.close()
     db.close()
 
     print("LLM Test verification completed.")
-
 
   
 if __name__ == "__main__":
