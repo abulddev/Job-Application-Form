@@ -1569,68 +1569,64 @@ async def send_email(to_email, subject, message):
 
 @app.post("/admin/send-test")
 async def send_test(request: Request):
+    import secrets
+
     form = await request.form()
     test_id = form.get("test_id")
 
     if not test_id:
         return {"success": False, "error": "Missing test_id"}
 
+    # Collect candidates
     candidates = []
-
-    # Read up to 20 candidates
     for i in range(1, 21):
         name = form.get(f"name{i}")
         email = form.get(f"email{i}")
-
         if email and email.strip():
-            candidates.append({
-                "name": name.strip() if name else "",
-                "email": email.strip()
-            })
+            candidates.append({"name": name.strip() if name else "", "email": email.strip()})
+
+    if not candidates:
+        return {"success": False, "error": "No candidate emails provided"}
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = db.cursor(buffered=True)
     sent_to = []
+    failed_to_send = []
 
-    for c in candidates:
-        candidate_name = c["name"] if c["name"] else "Candidate"
-        candidate_email = c["email"]
+    try:
+        for c in candidates:
+            candidate_name = c["name"] or "Candidate"
+            candidate_email = c["email"]
 
-        # ⭐ 1) CHECK IF TEST ENTRY ALREADY EXISTS
-        cursor.execute("""
-            SELECT id FROM test_submissions
-            WHERE test_id = %s AND candidate_email = %s AND question_id IS NULL
-        """, (test_id, candidate_email))
+            # Generate temp password
+            temp_password = secrets.token_hex(3)
 
-        existing = cursor.fetchone()
+            # Insert/update submission
+            cursor.execute("""
+                SELECT id FROM test_submissions
+                WHERE test_id = %s AND candidate_email = %s AND question_id IS NULL
+            """, (test_id, candidate_email))
+            existing = cursor.fetchone()
 
-        if existing:
-            print(f"Skipping duplicate for: {candidate_email}")
-            continue   # ⭐ SKIP INSERT — prevents duplicates
+            if existing:
+                cursor.execute("""
+                    UPDATE test_submissions
+                    SET temp_password=%s, verification_status='Pending', created_at=NOW()
+                    WHERE id=%s
+                """, (temp_password, existing[0]))
+            else:
+                cursor.execute("""
+                    INSERT INTO test_submissions 
+                    (test_id, candidate_name, candidate_email, verification_status, temp_password, created_at)
+                    VALUES (%s, %s, %s, 'Pending', %s, NOW())
+                """, (test_id, candidate_name, candidate_email, temp_password))
 
-        # Generate temp password
-        temp_password = secrets.token_hex(3)
+            db.commit()
 
-        # ⭐ 2) INSERT ONLY IF NOT EXISTS
-        cursor.execute("""
-            INSERT INTO test_submissions 
-            (test_id, candidate_name, candidate_email, verification_status, temp_password, created_at)
-            VALUES (%s, %s, %s, 'Pending', %s, NOW())
-        """, (test_id, candidate_name, candidate_email, temp_password))
-
-        db.commit()
-
-        # Build login link
-        test_link = (
-            f"http://localhost:8000/candidate-login"
-            f"?test_id={test_id}"
-            f"&email={candidate_email}"
-            f"&temp_password={temp_password}"
-        )
-
-        subject = "Your Online Assessment is Ready"
-
-        message = f"""
+            # Build candidate link
+            test_link = f"http://localhost:8000/candidate-login?test_id={test_id}&email={candidate_email}&temp_password={temp_password}"
+            subject = "Your Online Assessment is Ready"
+            message = f"""
 Hello {candidate_name},
 
 You have been invited to take your online assessment.
@@ -1641,48 +1637,28 @@ Click the link below to begin:
 Best regards,
 Recruitment Team
 """
+            # Send email
+            try:
+                await send_email(candidate_email, subject, message)
+                sent_to.append(candidate_email)
+            except Exception as e:
+                failed_to_send.append({"email": candidate_email, "error": str(e)})
+                print(f"Failed to send email to {candidate_email}: {e}")
 
-        sent_to.append(candidate_email)
-        await send_email(candidate_email, subject, message)
+    finally:
+        cursor.close()
+        db.close()
 
-    cursor.close()
-    db.close()
+    if failed_to_send:
+        # Always return HTTP 200 but success=False for frontend
+        return {
+            "success": False,
+            "error": f"Failed to send emails to {len(failed_to_send)} candidates",
+            "details": failed_to_send,
+            "sent_to": sent_to
+        }
 
-    return {
-        "success": True,
-        "sent_to": sent_to
-    }
-
-
-@app.get("/test/start/{test_id}", response_class=HTMLResponse)
-async def start_test(request: Request, test_id: int):
-    db = get_db()
-    cursor = db.cursor(dictionary=True)
-
-    # Load test
-    cursor.execute("SELECT * FROM tests WHERE id=%s", (test_id,))
-    test = cursor.fetchone()
-
-    # Load questions count for instructions page
-    cursor.execute("""
-        SELECT q.id, q.question_text
-        FROM test_questions tq
-        JOIN questions q ON q.id = tq.question_id
-        WHERE tq.test_id=%s
-    """, (test_id,))
-    questions = cursor.fetchall()
-
-    cursor.close()
-    db.close()
-
-    if not test:
-        return HTMLResponse("<h3>Invalid Test Link</h3>")
-
-    return templates.TemplateResponse("test_instructions.html", {
-        "request": request,
-        "test": test,
-        "questions": questions
-    })
+    return {"success": True, "sent_to": sent_to}
 
 
 @app.post("/test/start-session")
