@@ -2,6 +2,7 @@ from fastapi import FastAPI, Form, Request, Response, Cookie, File, UploadFile, 
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from dotenv import load_dotenv
 import mysql.connector
 import asyncio, requests
 import random, json, time
@@ -39,16 +40,19 @@ llm = GPT4All(
     allow_download=False,
     verbose=False,
 )
+
+load_dotenv()
+
 conf = ConnectionConfig(
-    MAIL_USERNAME = "a.samad@appinsnap.com",
-    MAIL_PASSWORD = "Login@78601",
-    MAIL_FROM = "a.samad@appinsnap.com",
-    MAIL_PORT = 587,
-    MAIL_SERVER = "smtp.office365.com",  # e.g. smtp.outlook.com
-    MAIL_STARTTLS=True,      # REQUIRED — replaces MAIL_TLS
-    MAIL_SSL_TLS=False, 
-    USE_CREDENTIALS = True,
-    VALIDATE_CERTS = True
+    MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
+    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
+    MAIL_FROM=os.getenv("MAIL_FROM"),
+    MAIL_PORT=int(os.getenv("MAIL_PORT")),
+    MAIL_SERVER=os.getenv("MAIL_SERVER"),
+    MAIL_STARTTLS=True,
+    MAIL_SSL_TLS=False,
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=True
 )
 
 @app.get("/view-file/{filename}")
