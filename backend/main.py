@@ -40,11 +40,11 @@ llm = GPT4All(
     verbose=False,
 )
 conf = ConnectionConfig(
-    MAIL_USERNAME = "ab.samad.ansaar@gmail.com",
-    MAIL_PASSWORD = "lslx mpim arze wdhn",
-    MAIL_FROM = "ab.samad.ansaar@gmail.com",
+    MAIL_USERNAME = "a.samad@appinsnap.com",
+    MAIL_PASSWORD = "Login@78601",
+    MAIL_FROM = "a.samad@appinsnap.com",
     MAIL_PORT = 587,
-    MAIL_SERVER = "smtp.gmail.com",  # e.g. smtp.gmail.com
+    MAIL_SERVER = "smtp.office365.com",  # e.g. smtp.outlook.com
     MAIL_STARTTLS=True,      # REQUIRED — replaces MAIL_TLS
     MAIL_SSL_TLS=False, 
     USE_CREDENTIALS = True,
@@ -631,7 +631,32 @@ async def candidate_login(request: Request):
     # CASE 1: TEST LOGIN
     # ----------------------------
     if test_id:
-        # Redirect to start-session page (instructions) with candidate info in query params
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+
+        # Check if candidate already submitted or terminated
+        cursor.execute("""
+            SELECT verification_status
+            FROM test_submissions
+            WHERE test_id=%s AND candidate_email=%s AND question_id IS NULL
+            LIMIT 1
+        """, (test_id, email))
+        submission = cursor.fetchone()
+
+        cursor.close()
+        db.close()
+
+        if submission and submission["verification_status"] in ["Processing", "Terminated"]:
+            return templates.TemplateResponse("candidate_login.html", {
+                "request": request,
+                "error": "You have already submitted or terminated this test and cannot attempt again.",
+                "email": email,
+                "temp_password": temp_password,
+                "assignment_id": assignment_id,
+                "test_id": test_id
+            })
+
+        # If not submitted/terminated, allow start
         response = RedirectResponse(
             url=f"/test/start-session?test_id={test_id}&candidate_email={email}&candidate_name=",
             status_code=302
@@ -680,7 +705,6 @@ async def candidate_login(request: Request):
         url=f"/assignment/{assignment_id}?email={email}",
         status_code=302
     )
-
     response.set_cookie("candidate_email", email)
     return response
 
@@ -890,6 +914,11 @@ def save_assignment_llm_result(
             return {"success": False, "error": "Assignment answer not found"}
         assignment_master_id = res[0]
 
+        # verify assignment exists in master table
+        cursor.execute("SELECT id FROM assignment_master WHERE id=%s", (assignment_master_id,))
+        if not cursor.fetchone():
+            return {"success": False, "error": "Assignment does not exist in master table"}
+
         # insert LLM result
         cursor.execute("""
             INSERT INTO llm_results (assignment_id, candidate_email, score, mismatch, reason)
@@ -908,6 +937,7 @@ def save_assignment_llm_result(
     finally:
         cursor.close()
         db.close()
+
 
 @app.post("/test/llm-result")
 async def save_test_llm_result(request: Request):
@@ -1061,6 +1091,12 @@ def load_dashboard(request: Request):
 
     merged_tests = []
     for t in unique.values():
+        if t["verification_status"] in ("Processing", "Verified"):
+           status = "Submitted"
+        elif t["verification_status"] in ("Pending", None, ""):
+           status = "Pending"
+        else:
+           status = t["verification_status"]
         merged_tests.append({
             "submission_id": t["id"],
             "test_id": t["test_id"],
@@ -1069,7 +1105,9 @@ def load_dashboard(request: Request):
             "title": t["test_name"] if t["test_name"] else "Test Submission",
             "job_type": "Test",
             "verification_status": t["verification_status"],
+            "status": status,
             "llm_score": t["llm_score"],
+            "due_date": t["due_date"],
             "file_or_link": f"/admin/view-assignment/{t['id']}",
             "result_link": f"/admin/view-assignment/{t['id']}",
         })
@@ -1702,30 +1740,59 @@ Recruitment Team
 
 @app.api_route("/test/start-session", methods=["GET", "POST"], response_class=HTMLResponse)
 async def start_test_session(request: Request):
+    test_id = request.query_params.get("test_id") or (await request.form()).get("test_id")
+    candidate_email = request.query_params.get("candidate_email") or (await request.form()).get("candidate_email")
+    candidate_name = request.query_params.get("candidate_name") or (await request.form()).get("candidate_name")
+
+    if not test_id or not candidate_email:
+        return JSONResponse({"success": False, "error": "Missing test_id or candidate_email"}, status_code=400)
+
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+
+    # ⭐ Check if candidate already submitted or terminated
+    cursor.execute("""
+        SELECT id, verification_status
+        FROM test_submissions
+        WHERE test_id=%s AND candidate_email=%s AND question_id IS NULL
+        LIMIT 1
+    """, (test_id, candidate_email))
+    existing = cursor.fetchone()
+
+    if existing and existing["verification_status"] in ("Processing", "Terminated", "Verified"):
+        cursor.close()
+        db.close()
+        return templates.TemplateResponse("candidate_login.html", {
+            "request": request,
+            "error": "You have already submitted or terminated this test and cannot attempt again.",
+            "email": candidate_email,
+            "test_id": test_id,
+            "candidate_name": candidate_name
+        })
+
     # -----------------------------
-    # POST: Create submission
+    # POST: Create submission if not exists
     # -----------------------------
     if request.method == "POST":
         form = await request.form()
-
-        test_id = form.get("test_id")
         candidate_name = form.get("candidate_name")
         candidate_email = form.get("candidate_email")
-
-        if not test_id:
-            return JSONResponse({"success": False, "error": "Missing test_id"}, status_code=400)
-
-        db = get_db()
-        cursor = db.cursor()
+        test_id = form.get("test_id")
 
         try:
-            cursor.execute("""
-                INSERT INTO test_submissions
-                (test_id, candidate_name, candidate_email, question_id, fullscreen_attempts, is_flagged, created_at)
-                VALUES (%s, %s, %s, NULL, 0, 0, %s)
-            """, (test_id, candidate_name, candidate_email, datetime.utcnow()))
-            submission_id = cursor.lastrowid
-            db.commit()
+            if existing:
+                # Already exists but Pending → return same submission_id
+                submission_id = existing["id"]
+            else:
+                # Create new submission
+                cursor.execute("""
+                    INSERT INTO test_submissions
+                    (test_id, candidate_name, candidate_email, question_id, fullscreen_attempts, is_flagged, created_at)
+                    VALUES (%s, %s, %s, NULL, 0, 0, %s)
+                """, (test_id, candidate_name, candidate_email, datetime.utcnow()))
+                submission_id = cursor.lastrowid
+                db.commit()
+
         except Exception as e:
             db.rollback()
             cursor.close()
@@ -1734,20 +1801,12 @@ async def start_test_session(request: Request):
 
         cursor.close()
         db.close()
-
         return JSONResponse({"success": True, "submission_id": submission_id})
 
     # -----------------------------
     # GET: Serve instructions page
     # -----------------------------
     else:
-        test_id = request.query_params.get("test_id", "")
-        candidate_email = request.query_params.get("candidate_email", "")
-        candidate_name = request.query_params.get("candidate_name", "")
-
-        db = get_db()
-        cursor = db.cursor(dictionary=True)
-
         # Fetch test info
         cursor.execute("SELECT * FROM tests WHERE id=%s", (test_id,))
         test = cursor.fetchone()
@@ -1771,6 +1830,7 @@ async def start_test_session(request: Request):
             "candidate_email": candidate_email,
             "candidate_name": candidate_name
         })
+
 
 @app.get("/test/fullscreen/{test_id}", response_class=HTMLResponse)
 async def fullscreen_test(request: Request, test_id: int):
@@ -2150,7 +2210,7 @@ async def admin_view_assignment(request: Request, submission_id: int):
         FROM llm_results
         WHERE assignment_id=%s AND candidate_email=%s
         ORDER BY created_at DESC LIMIT 1
-    """, (submission["submission_id"], submission["candidate_email"]))
+    """, (submission["assignment_id"], submission["candidate_email"]))
 
     llm = cursor.fetchone()
     submission["llm_score"] = llm["score"] if llm else None
@@ -2416,7 +2476,7 @@ RULES:
         cursor.execute("""
             INSERT INTO llm_results (assignment_id, candidate_email, score, mismatch, reason)
             VALUES (%s, %s, %s, %s, %s)
-        """, (submission_id, candidate_email, score, 0, llm_output))
+        """, (assignment_id, candidate_email, score, 0, llm_output))
 
         db.commit()
     except Exception as e:

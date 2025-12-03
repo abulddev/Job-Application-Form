@@ -31,6 +31,7 @@
 
             <p><strong>Title:</strong> {{ submission.title }}</p>
 
+            {% if submission.job_type == "Assignment" %}
             <p><strong>Description:</strong></p>
             <div class="border p-2 rounded">
 
@@ -47,6 +48,7 @@
                     {{ submission.description }}
                 {% endif %}
             </div>
+            {% endif %}
 
             <p class="mt-3">
               <strong>Due Date:</strong>
