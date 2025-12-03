@@ -1,377 +1,371 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Question Bank</title>
+
     <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        body { height: 100vh; display: flex; }
+        .page-wrapper { flex: 1; overflow-y: auto; padding: 20px; }
+    </style>
 </head>
-<body class="p-4">
 
-<!-- ⭐ HOME BUTTON (top-right) ⭐ -->
-<a href="/dashboard" class="btn btn-dark" style="position:absolute; top:20px; right:20px;">
-    🏠 Home
-</a>
+<body class="border-top-wide border-primary">
 
-<h2 class="mb-3">Question Bank</h2>
+    <!-- SIDEBAR -->
+    <aside class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end">
+        <div class="container-fluid">
 
-<!-- ADD QUESTION BUTTON -->
-<a href="#" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addQuestionModal">
-    + Add Question
-</a>
+            <a href="#" class="navbar-brand">Company Admin</a>
 
-<!-- FILTERS -->
-<div class="card p-3 mb-3">
-    <div class="row">
+            <ul class="navbar-nav flex-column">
 
-        <div class="col-md-4">
-            <label class="form-label">Search Question</label>
-            <input type="text" id="searchBox" class="form-control" placeholder="Type question...">
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="toggleAssignments(event)">Result</a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="/admin/question-bank" class="nav-link active">Question Bank</a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="loadTests(event)">Questionier</a>
+                </li>
+
+                <li class="nav-item">
+                    <a href="#" class="nav-link" onclick="loadAssignments(event)">Assignments</a>
+                </li>
+
+            </ul>
+
         </div>
+    </aside>
 
-        <div class="col-md-3">
-            <label class="form-label">Filter Skill</label>
-            <select id="filterSkill" class="form-select">
-                <option value="">All Skills</option>
-                {% for skill in skills %}
-                <option value="{{ skill }}">{{ skill }}</option>
-                {% endfor %}
-            </select>
-        </div>
+    <!-- MAIN CONTENT -->
+    <div class="page-wrapper">
 
-        <div class="col-md-3">
-            <label class="form-label">Filter Experience</label>
-            <select id="filterExperience" class="form-select">
-                <option value="">All</option>
-                {% for exp in experiences %}
-                <option value="{{ exp }}">{{ exp }}</option>
-                {% endfor %}
-            </select>
-        </div>
+        <!-- ⭐ HOME BUTTON (top-right) ⭐ -->
+        <a href="/dashboard" class="btn btn-dark" style="position:absolute; top:20px; right:20px;">
+            🏠 Home
+        </a>
 
-        <div class="col-md-2">
-            <label class="form-label"> </label>
-            <div>
-                <input type="checkbox" id="showSelectedCheck"> Show Only Selected
+        <h2 class="mb-3">Question Bank</h2>
+
+        <!-- ADD QUESTION BUTTON -->
+        <a href="#" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addQuestionModal">
+            + Add Question
+        </a>
+
+        <!-- FILTERS -->
+        <div class="card p-3 mb-3">
+            <div class="row">
+
+                <div class="col-md-4">
+                    <label class="form-label">Search Question</label>
+                    <input type="text" id="searchBox" class="form-control" placeholder="Type question...">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Filter Skill</label>
+                    <select id="filterSkill" class="form-select">
+                        <option value="">All Skills</option>
+                        {% for skill in skills %}
+                        <option value="{{ skill }}">{{ skill }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Filter Experience</label>
+                    <select id="filterExperience" class="form-select">
+                        <option value="">All</option>
+                        {% for exp in experiences %}
+                        <option value="{{ exp }}">{{ exp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label"> </label>
+                    <div>
+                        <input type="checkbox" id="showSelectedCheck"> Show Only Selected
+                    </div>
+                </div>
+
             </div>
         </div>
 
-    </div>
+        <!-- QUESTION TABLE -->
+        <table class="table table-striped" id="questionTable">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll"></th>
+                    <th>ID</th>
+                    <th>Question</th>
+                    <th>Skill</th>
+                    <th>Experience</th>
+                    <th>Options</th>
+                    <th>Correct</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for q in questions %}
+                <tr>
+                    <td><input type="checkbox" class="rowCheck"></td>
+                    <td class="col-id">{{ q.id }}</td>
+                    <td class="col-question">{{ q.question_text }}</td>
+                    <td class="col-skill">{{ q.skill_tag }}</td>
+                    <td class="col-exp">{{ q.experience_tag }}</td>
+                    <td class="col-options">
+                        {% if q.question_type == "mcq" %}
+                            A: {{ q.options.A }} <br>
+                            B: {{ q.options.B }} <br>
+                            C: {{ q.options.C }} <br>
+                            D: {{ q.options.D }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="col-correct">{{ q.correct_option or "-" }}</td>
+                    <td class="col-created">{{ q.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- FLOATING CREATE TEST BUTTON -->
+        <button id="createTestBtn"
+            class="btn btn-success"
+            style="position: fixed; bottom: 25px; right: 25px; display: none; z-index: 999;">
+            Create a Test
+        </button>
+
+        <!-- ADD QUESTION MODAL -->
+        <div class="modal fade" id="addQuestionModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content p-3">
+
+                    <div class="modal-header">
+                        <h5 class="modal-title">Add New Question</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <form id="addQuestionForm">
+                            <label class="form-label">Question Text</label>
+                            <textarea class="form-control" name="question_text" id="question_text" required rows="2"></textarea>
+
+                            <label class="form-label mt-3">Question Type</label>
+                            <select class="form-select" name="question_type" id="question_type" required>
+                                <option value="mcq">MCQ</option>
+                                <option value="text">Text</option>
+                            </select>
+
+                            <!-- ⭐ AI GENERATE BUTTON ⭐ -->
+                            <button type="button" class="btn btn-warning mt-3" id="aiGenerateBtn">✨ AI Generate</button>
+
+                            <label class="form-label mt-4">Skill Tag</label>
+                            <select class="form-select" name="skill_tag" required>
+                                {% for skill in skills %}
+                                <option value="{{ skill }}">{{ skill }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <label class="form-label mt-3">Experience Tag</label>
+                            <select class="form-select" name="experience_tag" required>
+                                {% for exp in experiences %}
+                                <option value="{{ exp }}">{{ exp }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <div id="modelAnswerBlock" class="mt-3" style="display:none;">
+                                <label class="form-label">Model Answer</label>
+                                <textarea class="form-control" name="model_answer" id="model_answer" rows="3"></textarea>
+                            </div>
+
+                            <div id="mcqOptionsBlock" class="mt-3" style="display:none;">
+                                <label class="form-label">MCQ Options</label>
+                                <input type="text" class="form-control mb-2" name="option_a" id="option_a" placeholder="Option A">
+                                <input type="text" class="form-control mb-2" name="option_b" id="option_b" placeholder="Option B">
+                                <input type="text" class="form-control mb-2" name="option_c" id="option_c" placeholder="Option C">
+                                <input type="text" class="form-control mb-2" name="option_d" id="option_d" placeholder="Option D">
+                                <label class="form-label">Correct Option</label>
+                                <select class="form-select" name="correct_option" id="correct_option">
+                                    <option value="">-- choose --</option>
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">D</option>
+                                </select>
+                            </div>
+
+                        </form>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button id="saveQuestionBtn" class="btn btn-primary">Save Question</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- JS LOGIC -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            (function () {
+
+                /* Input block toggle */
+                const typeEl = document.getElementById("question_type");
+                const modelBlock = document.getElementById("modelAnswerBlock");
+                const mcqBlock = document.getElementById("mcqOptionsBlock");
+
+                function refresh() {
+                    if (typeEl.value === "text") {
+                        modelBlock.style.display = "block";
+                        mcqBlock.style.display = "none";
+                    } else {
+                        modelBlock.style.display = "none";
+                        mcqBlock.style.display = "block";
+                    }
+                }
+                refresh();
+                typeEl.addEventListener("change", refresh);
+
+                /* ------------------------ AI GENERATE BUTTON ------------------------ */
+                document.getElementById("aiGenerateBtn").addEventListener("click", () => {
+                    const q = document.getElementById("question_text").value.trim();
+                    const type = document.getElementById("question_type").value;
+                    const skill = document.querySelector("select[name='skill_tag']").value;
+                    const exp = document.querySelector("select[name='experience_tag']").value;
+
+                    if (!q) { alert("Please enter question text first."); return; }
+
+                    let fd = new FormData();
+                    fd.append("question_text", q);
+                    fd.append("question_type", type);
+                    fd.append("skill_tag", skill);
+                    fd.append("experience_tag", exp);
+
+                    fetch("/admin/ai-generate-question", { method: "POST", body: fd })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.success) { alert("AI Error: " + data.error); return; }
+
+                            if (type === "mcq") {
+                                const optA = (data.A && data.A.trim()) ? data.A : "Option A not provided";
+                                const optB = (data.B && data.B.trim()) ? data.B : "Option B not provided";
+                                const optC = (data.C && data.C.trim()) ? data.C : "Option C not provided";
+                                const optD = (data.D && data.D.trim()) ? data.D : "Option D not provided";
+                                const correct = (data.correct && ["A","B","C","D"].includes(data.correct.toUpperCase())) ? data.correct.toUpperCase() : "A";
+
+                                document.getElementById("option_a").value = optA;
+                                document.getElementById("option_b").value = optB;
+                                document.getElementById("option_c").value = optC;
+                                document.getElementById("option_d").value = optD;
+                                document.getElementById("correct_option").value = correct;
+                            } else {
+                                const ans = (data.answer && data.answer.trim()) ? data.answer : "No answer generated.";
+                                document.getElementById("model_answer").value = ans;
+                            }
+
+                            alert("AI generated successfully!");
+                        });
+                });
+
+                /* Save question */
+                document.getElementById("saveQuestionBtn").addEventListener("click", () => {
+                    let fd = new FormData(document.getElementById("addQuestionForm"));
+                    let type = fd.get("question_type");
+
+                    if (type === "mcq") {
+                        if (!fd.get("option_a") || !fd.get("option_b") || !fd.get("option_c") || !fd.get("option_d")) { alert("Please enter all MCQ options."); return; }
+                        if (!fd.get("correct_option")) { alert("Select correct MCQ option."); return; }
+                    }
+
+                    fetch("/admin/add-question", { method: "POST", body: fd })
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.success) { alert("Question added!"); location.reload(); }
+                            else { alert("Error: " + d.error); }
+                        });
+                });
+
+                /* Filters */
+                const searchBox = document.getElementById("searchBox");
+                const filterSkill = document.getElementById("filterSkill");
+                const filterExperience = document.getElementById("filterExperience");
+                const showSelectedCheck = document.getElementById("showSelectedCheck");
+                const selectAll = document.getElementById("selectAll");
+                const rows = document.querySelectorAll("#questionTable tbody tr");
+
+                function applyFilters() {
+                    const q = searchBox.value.toLowerCase();
+                    const s = filterSkill.value.toLowerCase();
+                    const e = filterExperience.value.toLowerCase();
+                    const showSel = showSelectedCheck.checked;
+
+                    rows.forEach(row => {
+                        const question = row.querySelector(".col-question").textContent.toLowerCase();
+                        const skill = row.querySelector(".col-skill").textContent.toLowerCase();
+                        const exp = row.querySelector(".col-exp").textContent.toLowerCase();
+                        const selected = row.querySelector(".rowCheck").checked;
+
+                        let visible = true;
+                        if (q && !question.includes(q)) visible = false;
+                        if (s && skill !== s) visible = false;
+                        if (e && exp !== e) visible = false;
+                        if (showSel && !selected) visible = false;
+
+                        row.style.display = visible ? "" : "none";
+                    });
+                }
+
+                searchBox.addEventListener("keyup", applyFilters);
+                filterSkill.addEventListener("change", applyFilters);
+                filterExperience.addEventListener("change", applyFilters);
+                showSelectedCheck.addEventListener("change", applyFilters);
+
+                selectAll.addEventListener("change", () => {
+                    const checked = selectAll.checked;
+                    rows.forEach(row => {
+                        if (row.style.display !== "none") row.querySelector(".rowCheck").checked = checked;
+                    });
+                    toggleCreateTestButton();
+                });
+
+                /* Create Test Button */
+                const createTestBtn = document.getElementById("createTestBtn");
+                function toggleCreateTestButton() {
+                    const anyChecked = Array.from(rows)
+                        .filter(row => row.style.display !== "none")
+                        .some(row => row.querySelector(".rowCheck").checked);
+                    createTestBtn.style.display = anyChecked ? "block" : "none";
+                }
+                document.querySelectorAll(".rowCheck").forEach(ch => { ch.addEventListener("change", toggleCreateTestButton); });
+
+                createTestBtn.addEventListener("click", () => {
+                    const selectedIDs = Array.from(rows)
+                        .filter(row => row.style.display !== "none")
+                        .filter(row => row.querySelector(".rowCheck").checked)
+                        .map(row => row.querySelector(".col-id").textContent);
+
+                    if (selectedIDs.length === 0) { alert("Please select at least one question."); return; }
+
+                    window.location.href = "/admin/create-test?ids=" + selectedIDs.join(",");
+                });
+
+            })();
+        </script>
+
 </div>
-
-<table class="table table-striped" id="questionTable">
-    <thead>
-        <tr>
-            <th><input type="checkbox" id="selectAll"></th>
-            <th>ID</th>
-            <th>Question</th>
-            <th>Skill</th>
-            <th>Experience</th>
-            <th>Options</th>
-            <th>Correct</th>
-            <th>Created</th>
-        </tr>
-    </thead>
-
-    <tbody>
-        {% for q in questions %}
-        <tr>
-            <td><input type="checkbox" class="rowCheck"></td>
-
-            <td class="col-id">{{ q.id }}</td>
-            <td class="col-question">{{ q.question_text }}</td>
-            <td class="col-skill">{{ q.skill_tag }}</td>
-            <td class="col-exp">{{ q.experience_tag }}</td>
-
-            <td class="col-options">
-                {% if q.question_type == "mcq" %}
-                    A: {{ q.options.A }} <br>
-                    B: {{ q.options.B }} <br>
-                    C: {{ q.options.C }} <br>
-                    D: {{ q.options.D }}
-                {% else %}
-                    —
-                {% endif %}
-            </td>
-
-            <td class="col-correct">{{ q.correct_option or "-" }}</td>
-            <td class="col-created">{{ q.created_at }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-<!-- FLOATING CREATE TEST BUTTON -->
-<button id="createTestBtn"
-    class="btn btn-success"
-    style="position: fixed; bottom: 25px; right: 25px; display: none; z-index: 999;">
-    Create a Test
-</button>
-
-<!-- ADD QUESTION MODAL -->
-<div class="modal fade" id="addQuestionModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content p-3">
-
-      <div class="modal-header">
-        <h5 class="modal-title">Add New Question</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <div class="modal-body">
-
-        <form id="addQuestionForm">
-
-          <label class="form-label">Question Text</label>
-          <textarea class="form-control" name="question_text" id="question_text" required rows="2"></textarea>
-
-          <label class="form-label mt-3">Question Type</label>
-          <select class="form-select" name="question_type" id="question_type" required>
-            <option value="mcq">MCQ</option>
-            <option value="text">Text</option>
-          </select>
-
-          <!-- ⭐ AI GENERATE BUTTON ⭐ -->
-          <button type="button" class="btn btn-warning mt-3" id="aiGenerateBtn">✨ AI Generate</button>
-
-          <label class="form-label mt-4">Skill Tag</label>
-          <select class="form-select" name="skill_tag" required>
-              {% for skill in skills %}
-              <option value="{{ skill }}">{{ skill }}</option>
-              {% endfor %}
-          </select>
-
-          <label class="form-label mt-3">Experience Tag</label>
-          <select class="form-select" name="experience_tag" required>
-              {% for exp in experiences %}
-              <option value="{{ exp }}">{{ exp }}</option>
-              {% endfor %}
-          </select>
-
-          <div id="modelAnswerBlock" class="mt-3" style="display:none;">
-            <label class="form-label">Model Answer</label>
-            <textarea class="form-control" name="model_answer" id="model_answer" rows="3"></textarea>
-          </div>
-
-          <div id="mcqOptionsBlock" class="mt-3" style="display:none;">
-            <label class="form-label">MCQ Options</label>
-            <input type="text" class="form-control mb-2" name="option_a" id="option_a" placeholder="Option A">
-            <input type="text" class="form-control mb-2" name="option_b" id="option_b" placeholder="Option B">
-            <input type="text" class="form-control mb-2" name="option_c" id="option_c" placeholder="Option C">
-            <input type="text" class="form-control mb-2" name="option_d" id="option_d" placeholder="Option D">
-            <label class="form-label">Correct Option</label>
-            <select class="form-select" name="correct_option" id="correct_option">
-              <option value="">-- choose --</option>
-              <option value="A">A</option>
-              <option value="B">B</option>
-              <option value="C">C</option>
-              <option value="D">D</option>
-            </select>
-          </div>
-
-        </form>
-
-      </div>
-
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button id="saveQuestionBtn" class="btn btn-primary">Save Question</button>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<!-- JS LOGIC -->
-<script>
-(function () {
-
-    /* Input block toggle */
-    const typeEl = document.getElementById("question_type");
-    const modelBlock = document.getElementById("modelAnswerBlock");
-    const mcqBlock = document.getElementById("mcqOptionsBlock");
-
-    function refresh() {
-        if (typeEl.value === "text") {
-            modelBlock.style.display = "block";
-            mcqBlock.style.display = "none";
-        } else {
-            modelBlock.style.display = "none";
-            mcqBlock.style.display = "block";
-        }
-    }
-    refresh();
-    typeEl.addEventListener("change", refresh);
-
-    /* ------------------------ AI GENERATE BUTTON ------------------------ */
-
-    document.getElementById("aiGenerateBtn").addEventListener("click", () => {
-        
-        const q = document.getElementById("question_text").value.trim();
-        const type = document.getElementById("question_type").value;
-        const skill = document.querySelector("select[name='skill_tag']").value;
-        const exp = document.querySelector("select[name='experience_tag']").value;
-
-        if (!q) {
-            alert("Please enter question text first.");
-            return;
-        }
-
-        let fd = new FormData();
-        fd.append("question_text", q);
-        fd.append("question_type", type);
-        fd.append("skill_tag", skill);
-        fd.append("experience_tag", exp);
-
-        fetch("/admin/ai-generate-question", {
-            method: "POST",
-            body: fd
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (!data.success) {
-                alert("AI Error: " + data.error);
-                return;
-            }
-
-            /* ⭐ FIXED MCQ BLOCK ⭐ */
-            if (type === "mcq") {
-
-                const optA = (data.A && data.A.trim()) ? data.A : "Option A not provided";
-                const optB = (data.B && data.B.trim()) ? data.B : "Option B not provided";
-                const optC = (data.C && data.C.trim()) ? data.C : "Option C not provided";
-                const optD = (data.D && data.D.trim()) ? data.D : "Option D not provided";
-
-                const correct = (data.correct && ["A","B","C","D"].includes(data.correct.toUpperCase()))
-                                ? data.correct.toUpperCase()
-                                : "A";
-
-                document.getElementById("option_a").value = optA;
-                document.getElementById("option_b").value = optB;
-                document.getElementById("option_c").value = optC;
-                document.getElementById("option_d").value = optD;
-                document.getElementById("correct_option").value = correct;
-
-            } else {
-                const ans = (data.answer && data.answer.trim()) ? data.answer : "No answer generated.";
-                document.getElementById("model_answer").value = ans;
-            }
-
-            alert("AI generated successfully!");
-
-        });
-    });
-
-    /* Save question */
-    document.getElementById("saveQuestionBtn").addEventListener("click", () => {
-        let fd = new FormData(document.getElementById("addQuestionForm"));
-        let type = fd.get("question_type");
-
-        if (type === "mcq") {
-            if (!fd.get("option_a") || !fd.get("option_b") || !fd.get("option_c") || !fd.get("option_d")) {
-                alert("Please enter all MCQ options.");
-                return;
-            }
-            if (!fd.get("correct_option")) {
-                alert("Select correct MCQ option.");
-                return;
-            }
-        }
-
-        fetch("/admin/add-question", { method: "POST", body: fd })
-        .then(r => r.json())
-        .then(d => {
-            if (d.success) {
-                alert("Question added!");
-                location.reload();
-            } else {
-                alert("Error: " + d.error);
-            }
-        });
-    });
-
-    /* Filters */
-    const searchBox = document.getElementById("searchBox");
-    const filterSkill = document.getElementById("filterSkill");
-    const filterExperience = document.getElementById("filterExperience");
-    const showSelectedCheck = document.getElementById("showSelectedCheck");
-    const selectAll = document.getElementById("selectAll");
-    const rows = document.querySelectorAll("#questionTable tbody tr");
-
-    function applyFilters() {
-        const q = searchBox.value.toLowerCase();
-        const s = filterSkill.value.toLowerCase();
-        const e = filterExperience.value.toLowerCase();
-        const showSel = showSelectedCheck.checked;
-
-        rows.forEach(row => {
-            const question = row.querySelector(".col-question").textContent.toLowerCase();
-            const skill = row.querySelector(".col-skill").textContent.toLowerCase();
-            const exp = row.querySelector(".col-exp").textContent.toLowerCase();
-            const selected = row.querySelector(".rowCheck").checked;
-
-            let visible = true;
-
-            if (q && !question.includes(q)) visible = false;
-            if (s && skill !== s) visible = false;
-            if (e && exp !== e) visible = false;
-            if (showSel && !selected) visible = false;
-
-            row.style.display = visible ? "" : "none";
-        });
-    }
-
-    searchBox.addEventListener("keyup", applyFilters);
-    filterSkill.addEventListener("change", applyFilters);
-    filterExperience.addEventListener("change", applyFilters);
-    showSelectedCheck.addEventListener("change", applyFilters);
-
-    /* -------------------- ⭐ FIXED SELECT ALL (ONLY VISIBLE ROWS) ⭐ -------------------- */
-    selectAll.addEventListener("change", () => {
-        const checked = selectAll.checked;
-
-        rows.forEach(row => {
-            if (row.style.display !== "none") {
-                row.querySelector(".rowCheck").checked = checked;
-            }
-        });
-
-        toggleCreateTestButton();
-    });
-
-    /* Create Test Button */
-    const createTestBtn = document.getElementById("createTestBtn");
-
-    function toggleCreateTestButton() {
-        const anyChecked = Array.from(rows)
-            .filter(row => row.style.display !== "none")
-            .some(row => row.querySelector(".rowCheck").checked);
-
-        createTestBtn.style.display = anyChecked ? "block" : "none";
-    }
-
-    document.querySelectorAll(".rowCheck").forEach(ch => {
-        ch.addEventListener("change", () => {
-            toggleCreateTestButton();
-        });
-    });
-
-    /* Create Test */
-    createTestBtn.addEventListener("click", () => {
-        const selectedIDs = Array.from(rows)
-            .filter(row => row.style.display !== "none")
-            .filter(row => row.querySelector(".rowCheck").checked)
-            .map(row => row.querySelector(".col-id").textContent);
-
-        if (selectedIDs.length === 0) {
-            alert("Please select at least one question.");
-            return;
-        }
-
-        window.location.href = "/admin/create-test?ids=" + selectedIDs.join(",");
-    });
-
-})();
-</script>
 
 </body>
 </html>
