@@ -54,15 +54,20 @@
              {% if a.job_type == "Test" or a.title == "Test Submission" %}
               <!-- Delete TEST -->
                 <form action="/delete-test-submission/{{ a.test_id }}" method="post"
-                  onsubmit="return confirm('Delete this Test & its submissions?');">
-                  <button class="btn btn-danger btn-sm" title="Delete">❌</button>
+                  onsubmit="return confirm('Delete this candidate\'s test submission?');">
+                  <input type="hidden" name="candidate_email" value="{{ a.candidate_email }}">
+                  <button class="btn btn-danger btn-sm" title="Delete Submission">❌</button>
                 </form>
+
              {% else %}
               <!-- Delete ASSIGNMENT -->
-                <form action="/delete-assignment/{{ a.id }}" method="post"
-                  onsubmit="return confirm('Delete this Assignment?');">
-                  <button class="btn btn-danger btn-sm" title="Delete">❌</button>
+				<form action="/delete-assignment-list/{{ a.assignment_id }}" method="post"
+                  onsubmit="return confirm('Delete this candidate\'s submission?');">
+                  <input type="hidden" name="candidate_email" value="{{ a.candidate_email }}">
+                  <button class="btn btn-danger btn-sm" title="Delete Submission">❌</button>
                 </form>
+
+
              {% endif %}
           </td>
 

@@ -287,26 +287,28 @@ def dashboard(request: Request):
 def delete_assignment(assignment_id: int):
     db = get_db()
     cursor = db.cursor()
-
     try:
-        # Delete candidate assignment rows
-        cursor.execute("DELETE FROM assignment_candidates WHERE assignment_id = %s", (assignment_id,))
+        # Check if there are submissions first
+        cursor.execute("SELECT COUNT(*) FROM assignment_submissions WHERE assignment_master_id = %s", (assignment_id,))
+        submission_count = cursor.fetchone()[0]
 
-        # Delete assignment answers (submissions)
-        cursor.execute("DELETE FROM assignment_answers WHERE assignment_id = %s", (assignment_id,))
+        if submission_count > 0:
+            # There are submissions, prevent deletion
+            return {"success": False, "error": "Cannot delete assignment. Submissions already exist."}
 
-        # Delete assignment master
+        # Delete only the created assignment
         cursor.execute("DELETE FROM assignment_master WHERE id = %s", (assignment_id,))
-
         db.commit()
 
+        return {"success": True, "message": "Created assignment deleted. Submissions are not touched."}
+
     except Exception as e:
-        print("Delete Assignment Error:", e)
+        db.rollback()
+        return {"success": False, "error": str(e)}
 
-    cursor.close()
-    db.close()
-
-    return RedirectResponse(url="/dashboard", status_code=303)
+    finally:
+        cursor.close()
+        db.close()
 
 
 @app.post("/delete-test/{test_id}")
@@ -327,37 +329,62 @@ def delete_test(test_id: int):
     return RedirectResponse(url="/dashboard", status_code=303)
 
 @app.post("/delete-test-submission/{test_id}")
-def delete_test_submission(test_id: int):
+def delete_test_submission(test_id: int, candidate_email: str = Form(...)):
     db = get_db()
     cursor = db.cursor()
 
     try:
-        # Delete all MCQ rows
-        cursor.execute("DELETE FROM test_submissions WHERE test_id = %s", (test_id,))
+        # Delete only this candidate's submission rows
+        cursor.execute(
+            "DELETE FROM test_submissions WHERE test_id = %s AND candidate_email = %s",
+            (test_id, candidate_email)
+        )
 
         db.commit()
 
     except Exception as e:
-        print("Delete Test Error:", e)
+        print("Delete Test Submission Error:", e)
 
-    cursor.close()
-    db.close()
+    finally:
+        cursor.close()
+        db.close()
 
     return RedirectResponse(url="/dashboard", status_code=303)
 
 
+
 @app.post("/delete-assignment-list/{assignment_id}")
-def delete_assignment_list(assignment_id: int):
+def delete_assignment_list(assignment_id: int, candidate_email: str = Form(...)):
+    db = get_db()
+    cursor = db.cursor()
     try:
-        db = get_db()
-        cursor = db.cursor()
-        cursor.execute("DELETE FROM assignment_master WHERE id = %s", (assignment_id,))
+        # Delete only the specific candidate's answers, submissions, LLM results
+        cursor.execute(
+            "DELETE FROM assignment_answers WHERE assignment_id = %s AND candidate_email = %s",
+            (assignment_id, candidate_email)
+        )
+        cursor.execute(
+            "DELETE FROM assignment_submissions WHERE assignment_master_id = %s AND candidate_email = %s",
+            (assignment_id, candidate_email)
+        )
+        cursor.execute(
+            "DELETE FROM llm_results WHERE assignment_id = %s AND candidate_email = %s",
+            (assignment_id, candidate_email)
+        )
+        cursor.execute(
+            "DELETE FROM assignment_candidates WHERE assignment_id = %s AND candidate_email = %s",
+            (assignment_id, candidate_email)
+        )
+
         db.commit()
+    except Exception as e:
+        db.rollback()
+        print("Delete Assignment Error:", e)
+    finally:
         cursor.close()
         db.close()
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+
+    return RedirectResponse(url="/dashboard", status_code=303)
 
   
 # --- Generate temporary password ---
@@ -604,8 +631,9 @@ async def candidate_login(request: Request):
     # CASE 1: TEST LOGIN
     # ----------------------------
     if test_id:
+        # Redirect to start-session page (instructions) with candidate info in query params
         response = RedirectResponse(
-            url=f"/test/start/{test_id}",
+            url=f"/test/start-session?test_id={test_id}&candidate_email={email}&candidate_name=",
             status_code=302
         )
         response.set_cookie("candidate_email", email)
@@ -655,6 +683,7 @@ async def candidate_login(request: Request):
 
     response.set_cookie("candidate_email", email)
     return response
+
 
 
 @app.get("/assignment/{assignment_id}", response_class=HTMLResponse)
@@ -840,7 +869,7 @@ async def submit_assignment(request: Request, assignment_id: int):
 
 @app.post("/assignment/llm-result")
 def save_assignment_llm_result(
-    assignment_id: int = Form(...),
+    assignment_answer_id: int = Form(...),
     candidate_email: str = Form(...),
     score: int = Form(None),
     mismatch: int = Form(None),
@@ -850,10 +879,24 @@ def save_assignment_llm_result(
     cursor = db.cursor()
 
     try:
+        # fetch assignment_master_id
+        cursor.execute("""
+            SELECT assignment_id 
+            FROM assignment_answers
+            WHERE id=%s AND candidate_email=%s
+        """, (assignment_answer_id, candidate_email))
+        res = cursor.fetchone()
+        if not res:
+            return {"success": False, "error": "Assignment answer not found"}
+        assignment_master_id = res[0]
+
+        # insert LLM result
         cursor.execute("""
             INSERT INTO llm_results (assignment_id, candidate_email, score, mismatch, reason)
             VALUES (%s, %s, %s, %s, %s)
-        """, (assignment_id, candidate_email, score, mismatch, reason))
+            ON DUPLICATE KEY UPDATE
+                score=%s, mismatch=%s, reason=%s
+        """, (assignment_master_id, candidate_email, score, mismatch, reason, score, mismatch, reason))
 
         db.commit()
 
@@ -917,9 +960,9 @@ def load_dashboard(request: Request):
     db = get_db()
     cursor = db.cursor(dictionary=True)
 
-    # -----------------------------------------------
-    # 1. ASSIGNMENTS (unchanged)
-    # -----------------------------------------------
+    # ---------------------------------------------------
+    # 1. ASSIGNMENTS — UPDATED (created_at removed)
+    # ---------------------------------------------------
     cursor.execute("""
         SELECT 
             ac.id AS candidate_row_id,
@@ -945,8 +988,9 @@ def load_dashboard(request: Request):
                ON aa.assignment_id = ac.assignment_id 
               AND aa.candidate_email = ac.candidate_email
 
+        -- ✅ FIXED: Join LLM results to assignment_id, not answer id
         LEFT JOIN llm_results lr 
-               ON lr.assignment_id = aa.id
+               ON lr.assignment_id = ac.assignment_id
               AND lr.candidate_email = ac.candidate_email
 
         ORDER BY ac.id DESC
@@ -971,14 +1015,13 @@ def load_dashboard(request: Request):
             "result_link": f"/admin/view-assignment/{row['submission_id']}" if row["submission_id"] else "-"
         })
 
-    # -----------------------------------------------
-    # 2. TESTS (fixed: added t.due_date)
-    # -----------------------------------------------
+    # ---------------------------------------------------
+    # 2. TESTS (unchanged)
+    # ---------------------------------------------------
     cursor.execute("""
         SELECT
             ts.id,
             ts.test_id,
-
             COALESCE(
                 NULLIF(ts.candidate_name, ''),
                 (SELECT candidate_name
@@ -988,7 +1031,6 @@ def load_dashboard(request: Request):
                    AND candidate_name <> ''
                  ORDER BY id ASC LIMIT 1)
             ) AS candidate_name,
-
             COALESCE(
                 NULLIF(ts.candidate_email, ''),
                 (SELECT candidate_email
@@ -998,12 +1040,11 @@ def load_dashboard(request: Request):
                    AND candidate_email <> ''
                  ORDER BY id ASC LIMIT 1)
             ) AS candidate_email,
-
             ts.verification_status,
             ts.llm_score,
             ts.created_at,
             t.test_name,
-            t.due_date       -- ⭐ ADDED FIX HERE
+            t.due_date
         FROM test_submissions ts
         LEFT JOIN tests t ON ts.test_id = t.id
         WHERE ts.question_id IS NULL
@@ -1013,14 +1054,13 @@ def load_dashboard(request: Request):
     test_rows = cursor.fetchall()
 
     unique = {}
-    for row in test_rows:
-        key = (row["test_id"], row["candidate_email"])
+    for r in test_rows:
+        key = (r["test_id"], r["candidate_email"])
         if key not in unique:
-            unique[key] = row
+            unique[key] = r
 
     merged_tests = []
-
-    for key, t in unique.items():
+    for t in unique.values():
         merged_tests.append({
             "submission_id": t["id"],
             "test_id": t["test_id"],
@@ -1028,8 +1068,6 @@ def load_dashboard(request: Request):
             "candidate_email": t["candidate_email"],
             "title": t["test_name"] if t["test_name"] else "Test Submission",
             "job_type": "Test",
-            "due_date": t["due_date"],   # ⭐ NOW SHOW DUE DATE
-            "status": "Submitted",
             "verification_status": t["verification_status"],
             "llm_score": t["llm_score"],
             "file_or_link": f"/admin/view-assignment/{t['id']}",
@@ -1045,6 +1083,7 @@ def load_dashboard(request: Request):
         "dashboard_content.html",
         {"request": request, "assignments": combined}
     )
+
 
 
 # Dynamic create assignment form
@@ -1661,41 +1700,77 @@ Recruitment Team
     return {"success": True, "sent_to": sent_to}
 
 
-@app.post("/test/start-session")
+@app.api_route("/test/start-session", methods=["GET", "POST"], response_class=HTMLResponse)
 async def start_test_session(request: Request):
-    form = await request.form()
+    # -----------------------------
+    # POST: Create submission
+    # -----------------------------
+    if request.method == "POST":
+        form = await request.form()
 
-    test_id = form.get("test_id")
-    candidate_name = form.get("candidate_name")
-    candidate_email = form.get("candidate_email")
+        test_id = form.get("test_id")
+        candidate_name = form.get("candidate_name")
+        candidate_email = form.get("candidate_email")
 
-    if not test_id:
-        return JSONResponse({"success": False, "error": "Missing test_id"}, status_code=400)
+        if not test_id:
+            return JSONResponse({"success": False, "error": "Missing test_id"}, status_code=400)
 
-    db = get_db()
-    cursor = db.cursor()
+        db = get_db()
+        cursor = db.cursor()
 
-    try:
-        cursor.execute("""
-            INSERT INTO test_submissions
-            (test_id, candidate_name, candidate_email, question_id, fullscreen_attempts, is_flagged, created_at)
-            VALUES (%s, %s, %s, NULL, 0, 0, %s)
-        """, (test_id, candidate_name, candidate_email, datetime.utcnow()))
+        try:
+            cursor.execute("""
+                INSERT INTO test_submissions
+                (test_id, candidate_name, candidate_email, question_id, fullscreen_attempts, is_flagged, created_at)
+                VALUES (%s, %s, %s, NULL, 0, 0, %s)
+            """, (test_id, candidate_name, candidate_email, datetime.utcnow()))
+            submission_id = cursor.lastrowid
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            cursor.close()
+            db.close()
+            return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
-        submission_id = cursor.lastrowid
-        db.commit()
-
-    except Exception as e:
-        db.rollback()
         cursor.close()
         db.close()
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
-    cursor.close()
-    db.close()
+        return JSONResponse({"success": True, "submission_id": submission_id})
 
-    return JSONResponse({"success": True, "submission_id": submission_id})
+    # -----------------------------
+    # GET: Serve instructions page
+    # -----------------------------
+    else:
+        test_id = request.query_params.get("test_id", "")
+        candidate_email = request.query_params.get("candidate_email", "")
+        candidate_name = request.query_params.get("candidate_name", "")
 
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+
+        # Fetch test info
+        cursor.execute("SELECT * FROM tests WHERE id=%s", (test_id,))
+        test = cursor.fetchone()
+
+        # Fetch questions
+        cursor.execute("""
+            SELECT q.id, q.question_text, q.question_type, q.mcq_options
+            FROM test_questions tq
+            JOIN questions q ON tq.question_id = q.id
+            WHERE tq.test_id = %s
+        """, (test_id,))
+        questions = cursor.fetchall()
+
+        cursor.close()
+        db.close()
+
+        return templates.TemplateResponse("test_instructions.html", {
+            "request": request,
+            "test": test,
+            "questions": questions,
+            "candidate_email": candidate_email,
+            "candidate_name": candidate_name
+        })
 
 @app.get("/test/fullscreen/{test_id}", response_class=HTMLResponse)
 async def fullscreen_test(request: Request, test_id: int):
