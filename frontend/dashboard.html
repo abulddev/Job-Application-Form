@@ -5,32 +5,106 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard</title>
 
+  <!-- Tabler + Bootstrap -->
   <link href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta12/dist/css/tabler.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <style>
-    body { height: 100vh; }
-    .page-wrapper { flex: 1; overflow-y: auto; }
-    .header-actions { display: flex; flex-direction: column; margin-left: 0.5rem; }
+    body {
+      height: 100vh;
+      background: #f5f7fb;
+    }
 
+    /* SIDEBAR */
+    .navbar-vertical {
+      width: 260px !important;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+      background: #ffffff;
+    }
+
+    .navbar-brand {
+      font-size: 1.4rem;
+      font-weight: bold;
+      margin-bottom: 1rem;
+    }
+
+    .nav-link {
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      color: #333 !important;
+    }
+    .nav-link:hover {
+      background: #eef3ff;
+      color: #0d6efd !important;
+      transform: translateX(4px);
+      transition: 0.2s;
+    }
+
+    .page-wrapper {
+      flex: 1;
+      overflow-y: auto;
+      background: #f5f7fb;
+    }
+
+    /* HEADER */
+    header {
+      background: #ffffff;
+      padding: 10px 20px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    /* Avatar */
     .avatar-circle {
-      width: 40px; height: 40px; border-radius: 50%;
-      background-color: #0d6efd;
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: #0d6efd;
       display: inline-flex; align-items: center; justify-content: center;
       color: white; font-weight: bold; cursor: pointer;
-      position: relative; z-index: 100;
+      position: relative;
+      font-size: 1rem;
     }
 
     .tooltip {
-      position: absolute; top: 50px; left: 50%;
+      position: absolute;
+      top: 50px;
+      left: 50%;
       transform: translateX(-50%);
-      background: #000; color: #fff;
-      padding: 4px 8px; border-radius: 4px;
-      font-size: 12px; display: none; white-space: nowrap; z-index: 101;
+      background: #000;
+      color: #fff;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      display: none;
+      white-space: nowrap;
+      z-index: 200;
     }
 
-    .header-right {
-      display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end;
+    /* MAIN CONTENT */
+    .page-body {
+      padding: 25px;
+    }
+
+    #dashboard-content {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 12px rgba(0,0,0,0.05);
+    }
+
+    /* Buttons improve */
+    .btn-primary, .btn-success, .btn-warning, .btn-danger {
+      border-radius: 8px !important;
+      font-weight: 500;
+    }
+
+    /* Input fields */
+    .form-control {
+      border-radius: 8px;
     }
   </style>
 </head>
@@ -38,27 +112,35 @@
 <body class="border-top-wide border-primary d-flex">
 
   <!-- SIDEBAR -->
-  <aside class="navbar navbar-vertical navbar-expand-lg navbar-light bg-white border-end">
-    <div class="container-fluid">
+  <aside class="navbar navbar-vertical navbar-expand-lg navbar-light border-end">
+    <div class="container-fluid pt-3">
 
-      <a href="#" class="navbar-brand">Company Admin</a>
+      <a href="#" class="navbar-brand">Admin Panel</a>
 
-      <ul class="navbar-nav flex-column">
+      <ul class="navbar-nav flex-column w-100">
 
         <li class="nav-item">
-          <a href="#" class="nav-link" onclick="toggleAssignments(event)">Result</a>
+          <a href="#" class="nav-link" onclick="toggleAssignments(event)">
+            <i class="ti ti-list-details me-2"></i>Result
+          </a>
         </li>
 
         <li class="nav-item">
-          <a href="/admin/question-bank" class="nav-link">Question Bank</a>
+          <a href="/admin/question-bank" class="nav-link">
+            <i class="ti ti-database me-2"></i>Question Bank
+          </a>
         </li>
 
         <li class="nav-item">
-          <a href="#" class="nav-link" onclick="loadTests(event)">Questionier</a>
+          <a href="#" class="nav-link" onclick="loadTests(event)">
+            <i class="ti ti-file-text me-2"></i>Questionier
+          </a>
         </li>
 
         <li class="nav-item">
-          <a href="#" class="nav-link" onclick="loadAssignments(event)">Assignments</a>
+          <a href="#" class="nav-link" onclick="loadAssignments(event)">
+            <i class="ti ti-folder me-2"></i>Assignments
+          </a>
         </li>
 
       </ul>
@@ -69,10 +151,11 @@
   <!-- MAIN CONTENT -->
   <div class="page-wrapper flex-fill">
 
-    <header class="navbar navbar-expand navbar-light border-bottom">
-      <div class="container-fluid d-flex justify-content-end header-right">
+    <!-- HEADER -->
+    <header class="navbar navbar-expand navbar-light">
+      <div class="container-fluid d-flex justify-content-end align-items-center">
 
-        <div id="header-action-area" class="header-actions"></div>
+        <div id="header-action-area" class="me-3"></div>
 
         <div class="avatar-circle" id="admin-avatar">
           {{ admin_initials }}
@@ -84,7 +167,8 @@
 
     <div class="page-body">
       <div class="container-fluid" id="dashboard-content">
-        <p>Welcome to the Admin Dashboard. Click "Assignments" to start.</p>
+        <h3>Welcome to Admin Dashboard</h3>
+        <p class="text-muted">Use the left sidebar to navigate between sections.</p>
       </div>
     </div>
 
@@ -129,7 +213,7 @@
     </div>
   </div>
 
-  <!-- SCRIPTS -->
+  <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/@tabler/core/dist/js/tabler.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -152,7 +236,7 @@
       });
     });
 
-    /* LOAD SECTIONS */
+    /* LOADERS */
     function toggleAssignments(e){ e.preventDefault(); fetch('/load-dashboard').then(r=>r.text()).then(html=>{document.getElementById("dashboard-content").innerHTML=html;}); }
     function loadTests(e){ e.preventDefault(); fetch('/load-tests').then(r=>r.text()).then(html=>{document.getElementById("dashboard-content").innerHTML=html;}); }
     function openTestDetail(id){ fetch(`/admin/test/${id}`).then(r=>r.text()).then(html=>{document.getElementById("dashboard-content").innerHTML=html;}); }
@@ -166,6 +250,7 @@
         });
     }
 
+    /* DELETE */
     function deleteAssignment(id) {
       if (!confirm("Delete this assignment?")) return;
 
@@ -181,89 +266,9 @@
       })
       .catch(err => alert("Request Failed: " + err));
     }
-
-    /* SEND ASSIGNMENT POPUP */
-    function openSendAssignmentPopup(id, name) {
-      const hidden = document.getElementById("sendTestID");
-
-      hidden.setAttribute("name", "assignment_id");
-      hidden.value = id;
-
-      document.getElementById("sendTestTitle").innerText = "Send Assignment: " + name;
-
-      document.getElementById("emailList").innerHTML = "";
-      addEmailField();
-
-      window.sendMode = "assignment";
-
-      sendModal = new bootstrap.Modal(document.getElementById("sendTestModal"));
-      sendModal.show();
-    }
-
-    /* SEND TEST POPUP */
-    let sendModal = null;
-
-    function openSendPopup(testId, testName) {
-      const hidden = document.getElementById("sendTestID");
-
-      hidden.setAttribute("name", "test_id");
-      hidden.value = testId;
-
-      document.getElementById("sendTestTitle").innerText = "Send Test: " + testName;
-
-      document.getElementById("emailList").innerHTML = "";
-      addEmailField();
-
-      window.sendMode = "test";
-
-      sendModal = new bootstrap.Modal(document.getElementById("sendTestModal"));
-      sendModal.show();
-    }
-
-    /* ADD EMAIL FIELD */
-    function addEmailField(nameVal = "", emailVal = "") {
-      const list = document.getElementById("emailList");
-      const count = list.children.length;
-
-      if (count >= 20) return alert("Max 20 candidates allowed");
-
-      const i = count + 1;
-
-      const row = document.createElement("div");
-      row.className = "input-group mb-2";
-      row.id = "emailRow" + i;
-
-      row.innerHTML = `
-        <span class="input-group-text">${i}</span>
-        <input type="text" class="form-control" name="name${i}" placeholder="Candidate Name" value="${nameVal}" required>
-        <input type="email" class="form-control email-input" name="email${i}" placeholder="candidate@gmail.com" value="${emailVal}" onpaste="handlePaste(event)" required>
-        <button class="btn btn-danger" type="button" onclick="removeEmailField(${i})">X</button>
-      `;
-
-      list.appendChild(row);
-    }
-
-    function removeEmailField(i) {
-      const row = document.getElementById("emailRow" + i);
-      if (row) row.remove();
-    }
-
-    function handlePaste(e) {
-      const text = e.clipboardData.getData("text");
-
-      if (!text.match(/[@,\s\n]/)) return;
-
-      e.preventDefault();
-
-      const parts = text.split(/[\s,]+/);
-
-      parts.forEach(val => {
-        if (val.includes("@")) addEmailField("", val);
-      });
-    }
   </script>
 
-  <!-- FINAL SEND SCRIPT: FULLY UPDATED FOR NETWORK ERRORS & FAILED EMAILS -->
+  <!-- FINAL SEND SCRIPT -->
   <script>
 document.addEventListener("click", function(e){
   if(e.target && e.target.id==="sendBtn"){

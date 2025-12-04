@@ -156,7 +156,7 @@ async def forgot_password(request: Request, email: str = Form(...)):
     cursor.close()
     db.close()
 
-    reset_link = f"http://127.0.0.1:8000/reset-password?token={token}"
+    reset_link = f"https://aisjob-application.appinsnap.com/reset-password?token={token}"
 
     # Prepare email message
     message = MessageSchema(
@@ -572,7 +572,7 @@ async def send_assignment(request: Request):
         # Build login link
         # --------------------------------------------
         assignment_link = (
-            f"http://localhost:8000/candidate-login?"
+            f"https://aisjob-application.appinsnap.com/candidate-login?"
             f"assignment_id={assignment_id}&email={candidate_email}&temp_password={temp_password}"
         )
 
@@ -1335,53 +1335,96 @@ def extract_json_safe(text):
     except:
         return None
 
-# ---------------------- GLOBAL MCQ PROMPT ----------------------
-def build_mcq_prompt(question_text):
+# =================== MCQ PLAIN TEXT PROMPT ===================
+def build_mcq_prompt_plain(question_text):
     return f"""
-You MUST output ONLY a VALID JSON object.
+You MUST follow EXACTLY this output format:
 
-NO markdown.
-NO explanation.
-NO extra sentences.
-NO backticks.
+A: <1-2 words>
+B: <1-2 words>
+C: <1-2 words>
+D: <1-2 words>
+correct <A/B/C/D>
 
-Output MUST start with '{{' and end with '}}'.
+HARD RULES:
+- Options MUST be 1–2 words ONLY.
+- NO full sentences.
+- NO long phrases.
+- NO punctuation.
+- NO explanation.
+- NO extra lines.
+- NO markdown.
+- STOP immediately after the correct line.
+- If unsure, choose the SHORTEST possible words.
 
-JSON structure MUST be EXACTLY:
-
-{{
-  "A": "option text A",
-  "B": "option text B",
-  "C": "option text C",
-  "D": "option text D",
-  "correct": "A"
-}}
-
-RULES:
-- Provide ONLY the JSON above — nothing else.
-- Each option MUST be a short incorrect or correct answer.
-- EXACTLY ONE option must be correct.
-- "correct" MUST be: "A", "B", "C" OR "D" ONLY.
-
-Now generate the MCQ for this question:
-
+Question:
 {question_text}
 """
 
+# =================== PARSE PLAIN TEXT MCQ ===================
+import re
 
-# ---------------------- GLOBAL QWEN CALL ----------------------
+def parse_mcq_plain(text):
+    result = {}
+    lines = text.strip().split("\n")
+
+    for line in lines:
+        line = line.strip()
+
+        if line.startswith(("A:", "a:")):
+            result["A"] = line.split(":",1)[1].strip()
+        elif line.startswith(("B:", "b:")):
+            result["B"] = line.split(":",1)[1].strip()
+        elif line.startswith(("C:", "c:")):
+            result["C"] = line.split(":",1)[1].strip()
+        elif line.startswith(("D:", "d:")):
+            result["D"] = line.split(":",1)[1].strip()
+        elif re.match(r"(?i)^correct\s+[A-D]$", line):
+            result["correct"] = line.split()[-1].upper()
+
+    if all(k in result for k in ["A","B","C","D","correct"]):
+        return result
+    return None
+
+def cleanup_llm_output(text):
+    text = text.replace("<|endoftext|>", "")
+    text = re.sub(r"(?i)human:.*", "", text)
+    text = re.sub(r"(?i)assistant:.*", "", text)
+    text = re.sub(r"(?i)explanation:.*", "", text)
+    text = re.sub(r"(?i)analysis:.*", "", text)
+
+    # normalize capitalization
+    text = re.sub(r"(?i)correct:", "correct ", text)
+
+    # stop at "correct X"
+    m = re.search(r"correct\s+[A-D]", text, re.I)
+    if m:
+        text = text[:m.end()]   # cut everything after correct letter
+
+    return text.strip()
+
+# =================== GLOBAL QWEN CALL ===================
 def generate_answer_with_qwen(prompt):
     try:
-        out = llm.generate(prompt, max_tokens=100, temp=0.1)
-        return out.strip()
+        raw = llm.generate(prompt, max_tokens=80, temp=0.1)
+        if not raw:
+            return None
+
+        clean = cleanup_llm_output(raw.strip())
+        parsed = parse_mcq_plain(clean)
+
+        if parsed:
+            return clean
+
+        print("PARSE FAIL RAW:", raw)
+        print("PARSE FAIL CLEAN:", clean)
+        return None
+
     except Exception as e:
         print("QWEN ERROR:", e)
         return None
 
-# ==============================================================
-# ==================== AI GENERATE QUESTION =====================
-# ==============================================================
-
+# =================== AI GENERATE QUESTION ===================
 @app.post("/admin/ai-generate-question")
 def ai_generate_question(
     request: Request,
@@ -1390,17 +1433,16 @@ def ai_generate_question(
     skill_tag: str = Form(...),
     experience_tag: str = Form(...)
 ):
-
     if question_type == "mcq":
-        prompt = build_mcq_prompt(question_text)
+        prompt = build_mcq_prompt_plain(question_text)
         raw = generate_answer_with_qwen(prompt)
 
         if not raw:
             return JSONResponse({"success": False, "error": "AI returned empty"})
 
-        data = extract_json_safe(raw)
+        data = parse_mcq_plain(raw)
         if not data:
-            return JSONResponse({"success": False, "error": "Invalid JSON from AI"})
+            return JSONResponse({"success": False, "error": "Failed to parse AI output"})
 
         return JSONResponse({
             "success": True,
@@ -1420,11 +1462,7 @@ def ai_generate_question(
 
     return JSONResponse({"success": True, "answer": ans})
 
-
-# ==============================================================
-# ========================= ADD QUESTION ========================
-# ==============================================================
-
+# =================== ADD QUESTION ===================
 @app.post("/admin/add-question")
 def add_question(
     request: Request,
@@ -1439,57 +1477,44 @@ def add_question(
     correct_option: str = Form(None),
     model_answer: str = Form(None)
 ):
-
     admin_email = request.cookies.get("admin_email")
     if not admin_email:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
     question_text = question_text.strip()
-
     mcq_options_json = None
     correct_opt = None
     model_ans = None
 
-    # ======================================================
-    #                MCQ AUTO GENERATION
-    # ======================================================
+    # =================== MCQ AUTO GENERATION ===================
     if question_type == "mcq":
-
-        # If any field is missing → auto-generate
         if not (option_a and option_b and option_c and option_d and correct_option):
-
-            prompt = build_mcq_prompt(question_text)
+            prompt = build_mcq_prompt_plain(question_text)
             raw = generate_answer_with_qwen(prompt)
 
             if not raw:
                 return JSONResponse({"error": "AI generation failed"}, status_code=500)
 
-            # Extract JSON block
-            data = extract_json_safe(raw)
+            data = parse_mcq_plain(raw)
             if not data:
-                return JSONResponse({"error": "AI returned invalid JSON"}, status_code=500)
+                return JSONResponse({"error": "Failed to parse AI output"}, status_code=500)
 
-            # Assign values
             option_a = data["A"]
             option_b = data["B"]
             option_c = data["C"]
             option_d = data["D"]
             correct_opt = data["correct"].strip().upper()
-
         else:
             correct_opt = correct_option.strip().upper()
 
-        # Build JSON for DB
         mcq_options_json = json.dumps({
             "A": option_a.strip(),
             "B": option_b.strip(),
             "C": option_c.strip(),
-            "D": option_d.strip(),
+            "D": option_d.strip()
         })
 
-    # ======================================================
-    #                TEXT ANSWER GENERATION
-    # ======================================================
+    # =================== TEXT ANSWER ===================
     else:
         if model_answer:
             model_ans = model_answer.strip()
@@ -1497,19 +1522,15 @@ def add_question(
             prompt = f"Write a short 2–3 line answer:\n{question_text}"
             model_ans = generate_answer_with_qwen(prompt)
 
-    # ======================================================
-    #                SAVE TO DATABASE
-    # ======================================================
+    # =================== SAVE TO DATABASE ===================
     db = get_db()
     cursor = db.cursor()
-
     query = """
         INSERT INTO questions 
         (question_text, question_type, mcq_options, correct_option, model_answer,
          skill_tag, experience_tag, created_by)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
-
     values = (
         question_text,
         question_type,
@@ -1520,7 +1541,6 @@ def add_question(
         experience_tag,
         admin_email
     )
-
     cursor.execute(query, values)
     db.commit()
     cursor.close()
@@ -1705,7 +1725,7 @@ async def send_test(request: Request):
             db.commit()
 
             # Build candidate link
-            test_link = f"http://localhost:8000/candidate-login?test_id={test_id}&email={candidate_email}&temp_password={temp_password}"
+            test_link = f"https://aisjob-application.appinsnap.com/candidate-login?test_id={test_id}&email={candidate_email}&temp_password={temp_password}"
             subject = "Your Online Assessment is Ready"
             message = f"""
 Hello {candidate_name},
